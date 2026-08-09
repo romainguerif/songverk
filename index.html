@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>SONGVERK</title>
+<style>
+:root{
+  /* noir profond, blanc franc, une seule couleur de signal : l'ambre ne dit qu'une chose, « c'est maintenant » */
+  --bg:#0b0b0c; --panel:#141416; --panel2:#1b1b1e; --line:#26262a;
+  --ink:#f2f2f0; --dim:#8a8a92; --hot:#ff9436; --hot-dim:#3a2410;
+  --mute:#34343a; --ok:#4ade9b; --bad:#ff6b6b;
+  --r:10px;
+  /* mouvement : micro 120ms, standard 220ms, panneau 300ms, sortie plus courte que l'entrée */
+  --t-fast:120ms; --t-base:220ms; --t-sheet:300ms; --t-exit:180ms;
+  --e-out:cubic-bezier(.2,0,0,1); --e-in:cubic-bezier(.4,0,1,1);
+  --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --ui:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);touch-action:manipulation}
+button{font:inherit;color:inherit;background:none;border:0;padding:0}
+.lbl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);font-weight:500}
+.val{font-family:var(--mono);font-variant-numeric:tabular-nums}
+body{font-variant-numeric:tabular-nums}
+button{transition:transform var(--t-fast) var(--e-out),border-color var(--t-base) var(--e-out),
+  color var(--t-base) var(--e-out),background-color var(--t-base) var(--e-out)}
+button:active{transform:scale(.97)}
+:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+
+header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto}
+.bar{display:flex;align-items:center;gap:8px;padding:8px 10px;min-width:0}
+.bar+.bar{border-top:1px solid var(--line)}
+.brand{font-size:11px;letter-spacing:.18em;font-weight:600;flex:0 0 auto;min-height:36px;padding-right:2px}
+.brand b{color:var(--dim);font-weight:400}
+.spacer{flex:1}
+.songname{flex:1;min-width:0;text-align:left;font-size:13px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:36px}
+.icon{flex:0 0 auto;width:40px;height:36px;border:1px solid var(--line);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:15px}
+/* bandeau d'état : pleine largeur, jamais tronqué en pastille */
+.status{gap:6px;padding:0 10px 8px}
+.st{flex:1;min-width:0;height:32px;border:1px solid var(--line);border-radius:8px;
+  font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+.st.on,.st.live{color:var(--ink);border-color:#33333a}
+.st.err{color:var(--bad);border-color:#3a2020}
+.transport{display:flex;gap:8px;align-items:center}
+.play{flex:0 0 auto;width:58px;height:42px;border-radius:var(--r);background:var(--panel2);
+  color:var(--ink);font-weight:600;font-size:11px;letter-spacing:.1em;position:relative;overflow:hidden;
+  box-shadow:inset 0 0 0 1px var(--line)}
+.play::after{content:"";position:absolute;left:9px;right:9px;bottom:6px;height:2px;border-radius:2px;
+  background:var(--line);transition:background var(--t-base) var(--e-out)}
+.play.stop{box-shadow:inset 0 0 0 1px #3a3a40}
+.play.stop::after{background:var(--hot);box-shadow:0 0 8px rgba(255,148,54,.6)}
+.play span{display:block;transition:transform var(--t-fast) var(--e-out),opacity var(--t-fast) var(--e-out)}
+.play.swap span{transform:translateY(-6px);opacity:0}
+/* halo discret pendant la lecture, jamais clignotant */
+header.running{box-shadow:inset 0 -1px 0 var(--hot-dim)}
+.now{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.now .lbl{font-size:9px}
+.now .big{font-family:var(--mono);font-size:19px;font-weight:600;white-space:nowrap}
+.right{align-items:flex-end}
+
+main{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:8px 8px 100px}
+.row{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--panel);margin-bottom:6px;display:flex;min-height:62px;
+  transition:border-color var(--t-base) var(--e-out),background-color var(--t-base) var(--e-out);
+  animation:rowIn var(--t-base) var(--e-out) both}
+@keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.row.cur{border-color:var(--hot);background:#151310}
+.row:active{transform:scale(.995)}
+.row.queued{border-color:var(--ok)}
+.row.queued::after{content:"";position:absolute;inset:-1px;border:1px solid var(--ok);
+  border-radius:var(--r);animation:queue 1.6s ease-in-out infinite;pointer-events:none}
+@keyframes queue{0%,100%{opacity:.25}50%{opacity:1}}
+.fill{position:absolute;left:0;top:0;bottom:0;width:100%;
+  background:linear-gradient(90deg,rgba(255,148,54,.05),rgba(255,148,54,.12));
+  transform:scaleX(0);transform-origin:left;will-change:transform;pointer-events:none}
+/* bord avant du playhead : la ligne fine qui donne la lecture précise */
+.head{position:absolute;top:0;bottom:0;width:2px;background:var(--hot);left:0;
+  opacity:0;will-change:transform;pointer-events:none;box-shadow:0 0 10px rgba(255,148,54,.5)}
+.row.cur .head{opacity:1}
+/* arête gauche pulsée sur le temps : on voit le tempo sans lire un chiffre */
+.edge{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot);
+  opacity:0;will-change:opacity;pointer-events:none}
+.rowbody{position:relative;display:flex;align-items:center;gap:9px;padding:8px 10px;flex:1;min-width:0}
+.pat{font-family:var(--mono);font-size:21px;font-weight:600;flex:0 0 auto;width:52px}
+.row.cur .pat{color:var(--hot)}
+.meta{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.name{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.name.empty{color:var(--dim);font-style:italic}
+/* une seule ligne d'infos : les chips qui passaient à la ligne faisaient exploser la hauteur */
+.chips{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-family:var(--mono);font-size:10px;color:var(--dim)}
+.chips i{font-style:normal}
+.chips i.hot{color:var(--hot)}
+.chips i.ok{color:var(--ok)}
+/* mutes en deux rangées de 8 : 46px au lieu de 112 */
+.mutedots{display:grid;grid-template-columns:repeat(8,4px);gap:2px;flex:0 0 auto}
+.md{width:4px;height:6px;border-radius:1px;background:var(--ok);opacity:.9}
+.md.off{background:var(--mute)}
+.grab{width:44px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-left:1px solid var(--line);font-size:17px}
+.empty-state{color:var(--dim);text-align:center;padding:48px 24px;font-size:13px;line-height:1.8}
+
+footer{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 32%);
+  padding:18px 10px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;z-index:5}
+.fbtn{flex:1;height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
+.fbtn.go{border-color:var(--ok);color:var(--ok)}
+.fbtn.danger{border-color:#4a2020;color:var(--bad)}
+
+.sheet{position:fixed;inset:0;background:rgba(6,6,7,0);display:none;z-index:20;
+  backdrop-filter:blur(0px);transition:background var(--t-sheet) var(--e-out),backdrop-filter var(--t-sheet) var(--e-out)}
+.sheet.open{display:block;background:rgba(6,6,7,.66);backdrop-filter:blur(3px)}
+.sheet.closing{background:rgba(6,6,7,0);backdrop-filter:blur(0px)}
+.sheet.full .sheet-in{top:0;max-height:100%;border-radius:0}
+.sheet-in{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--panel);
+  border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+  padding:14px 14px calc(28px + env(safe-area-inset-bottom));
+  transform:translateY(14px);opacity:0;
+  transition:transform var(--t-sheet) var(--e-out),opacity var(--t-sheet) var(--e-out)}
+.sheet.open .sheet-in{transform:none;opacity:1}
+.sheet.closing .sheet-in{transform:translateY(16px);opacity:0;
+  transition-duration:var(--t-exit);transition-timing-function:var(--e-in)}
+/* le contenu des feuilles arrive juste derrière le panneau, jamais plus de six éléments décalés */
+.sheet.open .field,.sheet.open .lane,.sheet.open .songrow{animation:itemIn var(--t-base) var(--e-out) both;
+  animation-delay:calc(var(--i,0) * 22ms + 60ms)}
+@keyframes itemIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.sheet-h{display:flex;align-items:center;gap:10px;margin:0 0 4px;min-width:0}
+.sheet-h h2{margin:0;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;
+  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet-sub{font-size:11px;color:var(--dim);margin:0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.x{margin-left:auto;width:36px;height:36px;border-radius:8px;border:1px solid var(--line);font-size:15px;flex:0 0 auto}
+.field{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;gap:10px;
+  padding:9px 0;border-bottom:1px solid var(--line)}
+.field .lbl{min-width:0}
+.field .ctl{display:flex;align-items:center;gap:8px;justify-content:flex-end;min-width:0}
+.step{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.step button{width:36px;height:38px;font-size:17px;color:var(--dim)}
+.step .num{min-width:54px;text-align:center;font-family:var(--mono);font-size:15px;touch-action:none;padding:0 4px}
+select,input[type=text],input[type=search]{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:9px 10px;font:inherit;font-size:14px;width:100%;min-width:0;max-width:100%}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(36px,1fr));gap:5px;margin:8px 0 4px}
+.mgrid.wide{grid-template-columns:repeat(auto-fit,minmax(62px,1fr))}
+.mbtn{height:40px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-family:var(--mono);font-size:12px;color:var(--dim)}
+.mbtn.on{background:#1e3a30;border-color:#2f6a54;color:var(--ok)}
+.hint{font-size:11px;color:var(--dim);line-height:1.65;margin:8px 0 0}
+.addbtn{width:100%;height:42px;border:1px dashed var(--line);border-radius:8px;color:var(--dim);
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
+.rowops{display:flex;gap:6px;margin-top:10px}
+.rowops button{flex:1;height:40px;border:1px solid var(--line);border-radius:8px;font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+
+/* lanes */
+.lane{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:var(--panel2);overflow:hidden}
+.lane-top{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.lane-name{flex:1;min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lane-name small{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:2px 5px}
+.tag.nrpn{color:var(--hot);border-color:var(--hot-dim)}
+.mini{width:100%;height:44px;display:block}
+.dot{width:36px;height:36px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.dot::before{content:"";width:11px;height:11px;border-radius:99px;background:var(--ok)}
+.dot.off::before{background:var(--mute)}
+
+/* éditeur de courbe */
+#curveWrap{border:1px solid var(--line);border-radius:10px;background:#0e0e10;overflow:hidden;margin-bottom:10px}
+#curve{display:block;width:100%;height:230px;touch-action:none}
+.tools{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
+.tools .tool{padding:0 4px;font-size:10px;letter-spacing:.02em}
+.tool{min-height:38px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#laneParam{text-transform:none;letter-spacing:0;font-size:12px;text-align:right;width:100%}
+.tool.on{border-color:var(--hot);color:var(--hot)}
+.shapes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.shapes button{height:40px;border:1px solid var(--line);border-radius:8px;font-size:11px;color:var(--dim)}
+.readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
+.readout b{color:var(--hot);font-weight:600}
+
+/* picker */
+#pickList{max-height:56vh;overflow-y:auto;margin-top:8px}
+.pk{width:100%;text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+.pk .n{flex:1;font-size:13px}
+.pk .s{font-size:10px;color:var(--dim)}
+.pk .c{font-family:var(--mono);font-size:10px;color:var(--hot)}
+#pickSearch{max-width:none;width:100%}
+.songrow{display:flex;align-items:center;gap:10px;padding:12px 8px;border-bottom:1px solid var(--line)}
+.songrow .n{flex:1;min-width:0;font-size:14px}
+.songrow .vmeta{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;margin-top:2px}
+.songrow .tool{flex:0 0 auto}
+.songrow.cur .n{color:var(--hot)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:1ms!important;animation-duration:1ms!important;
+    animation-iteration-count:1!important}
+  .edge,.row.queued::after{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <button class="brand" id="brandBtn">SONG<b>VERK</b></button>
+    <button class="songname" id="songPill">—</button>
+    <button class="icon" id="setBtn">⚙</button>
+  </div>
+  <div class="bar transport">
+    <button class="play" id="playBtn"><span>PLAY</span></button>
+    <div class="now"><span class="lbl">row·pass</span><span class="big" id="nowRow">—</span></div>
+    <div class="spacer"></div>
+    <div class="now right"><span class="lbl">bar</span><span class="big val" id="nowBar">1.1</span></div>
+    <div class="now right"><span class="lbl">bpm</span><span class="big val" id="nowBpm">130.0</span></div>
+  </div>
+  <div class="bar status">
+    <button class="st" id="clockPill">clock</button>
+    <button class="st" id="midiPill">midi</button>
+  </div>
+</header>
+
+<main id="list"></main>
+
+<footer>
+  <button class="fbtn" id="addBtn">+ row</button>
+  <button class="fbtn go" id="nextBtn">next →</button>
+  <button class="fbtn" id="expBtn">export</button>
+</footer>
+
+<!-- ============ réglages ============ -->
+<div class="sheet" id="setSheet"><div class="sheet-in">
+  <div class="sheet-h"><h2>Réglages</h2><span class="tag" id="verTag"></span><button class="x" data-close>✕</button></div>
+  <div class="field"><span class="lbl">Sortie MIDI</span><div class="ctl"><select id="outSel"></select></div></div>
+  <div class="field"><span class="lbl">Entrée MIDI</span><div class="ctl"><select id="inSel"></select></div></div>
+  <div class="field"><span class="lbl">Horloge</span><div class="ctl"><select id="clockSel">
+    <option value="master">App master</option><option value="slave">Tonverk master</option></select></div></div>
+  <div class="field"><span class="lbl">Canal PC</span><div class="ctl" id="pcChCtl"></div></div>
+  <div class="field"><span class="lbl">PC lead</span><div class="ctl" id="leadCtl"></div></div>
+  <div class="field"><span class="lbl">Lead auto</span><div class="ctl">
+    <button class="tool" id="autoLeadBtn">off</button></div></div>
+  <p class="hint" id="measBox">Mesures en attente.</p>
+  <div class="field"><span class="lbl">CC offset</span><div class="ctl" id="ccOffCtl"></div></div>
+  <div class="field"><span class="lbl">Envoi CC</span><div class="ctl" id="ccResCtl"></div></div>
+  <p class="hint">Le Tonverk applique un Program Change à la frontière de pattern suivante : le PC doit partir <b>avant</b> la fin de la row. 100 à 200 ms marchent en général. Si un changement arrive une pattern trop tard, augmente. Le canal PC doit correspondre à MIDI CONFIG → CHANNELS → PROGRAM CHANGE IN, avec PROGRAM CHANGE RECEIVE activé.</p>
+  <div class="sheet-h" style="margin-top:18px"><h2>Canaux de tracks</h2></div>
+  <div class="mgrid wide" id="chGrid"></div>
+  <p class="hint">Canal MIDI de chaque track, pour les mutes (CC 94) et l'automation. Tape pour incrémenter.</p>
+  <div class="sheet-h" style="margin-top:18px"><h2>Base de paramètres</h2></div>
+  <p class="hint" id="dbState">Chargement…</p>
+  <div class="field"><span class="lbl">Remplacer</span><div class="ctl">
+    <button class="tool" id="csvBtn">charger un csv</button>
+    <input type="file" id="csvIn" accept=".csv" hidden></div></div>
+  <p class="hint">Optionnel : la base est déjà intégrée au fichier. Charge <b>Elektron/Tonverk.csv</b> (dépôt pencilresearch/midi) seulement pour passer à une version plus récente.</p>
+  <button class="fbtn" id="resetDb" style="width:100%;margin-top:8px">Revenir à la base intégrée</button>
+  <button class="fbtn" id="updBtn" style="width:100%;margin-top:16px">Forcer la mise à jour</button>
+  <p class="hint">Vide le cache hors ligne et recharge. À utiliser si l'app ne change pas après un déploiement.</p>
+  <button class="fbtn danger" id="wipeBtn" style="width:100%;margin-top:10px">Tout réinitialiser</button>
+</div></div>
+
+<!-- ============ éditeur de row ============ -->
+<div class="sheet" id="rowSheet"><div class="sheet-in">
+  <div class="sheet-h"><h2 id="rowTitle">Row</h2><button class="x" data-close>✕</button></div>
+  <div class="field"><span class="lbl">Pattern</span><div class="ctl" id="patCtl"></div></div>
+  <div class="field"><span class="lbl">Longueur</span><div class="ctl" id="lenCtl"></div></div>
+  <div class="field"><span class="lbl">Répétitions</span><div class="ctl" id="repCtl"></div></div>
+  <div class="field"><span class="lbl">Tempo</span><div class="ctl" id="bpmCtl"></div></div>
+  <div class="field"><span class="lbl">Nom</span><div class="ctl"><input type="text" id="labelIn" placeholder="intro, drop, break…"></div></div>
+
+  <div class="sheet-h" style="margin-top:16px"><h2>Mutes</h2><span class="tag">vert = audible</span></div>
+  <div class="mgrid" id="muteGrid"></div>
+
+  <div class="sheet-h" style="margin-top:16px"><h2>Suite</h2></div>
+  <div class="field"><span class="lbl">Après la row</span><div class="ctl"><select id="jumpMode">
+    <option value="none">Row suivante</option><option value="goto">Aller à…</option>
+    <option value="afterN">Boucler N fois puis aller à…</option><option value="hold">Boucler jusqu'à NEXT</option>
+  </select></div></div>
+  <div class="field" id="jumpTargetField"><span class="lbl">Cible</span><div class="ctl"><select id="jumpTarget"></select></div></div>
+  <div class="field" id="jumpNField"><span class="lbl">Passages</span><div class="ctl" id="jumpNCtl"></div></div>
+
+  <div class="sheet-h" style="margin-top:16px"><h2>Automation</h2><span class="tag" id="laneCount"></span></div>
+  <div id="lanes"></div>
+  <button class="addbtn" id="addLane">+ lane</button>
+
+  <div class="rowops">
+    <button id="upRow">▲ monter</button><button id="dnRow">▼ descendre</button><button id="dupRow">dupliquer</button>
+  </div>
+  <button class="fbtn danger" id="delRow" style="margin-top:8px;width:100%">Supprimer la row</button>
+</div></div>
+
+<!-- ============ éditeur de courbe ============ -->
+<div class="sheet full" id="curveSheet"><div class="sheet-in">
+  <div class="sheet-h">
+    <h2 id="curveTitle">Lane</h2>
+    <button class="x" data-close>✕</button>
+  </div>
+  <p class="sheet-sub" id="curveSub"></p>
+  <div class="readout"><span id="roLeft">glisse sur la courbe pour dessiner</span><span id="roRight"></span></div>
+  <div id="curveWrap"><canvas id="curve"></canvas></div>
+  <div class="tools">
+    <button class="tool" data-tool="pen">crayon</button>
+    <button class="tool" data-tool="line">ligne</button>
+    <button class="tool" data-tool="point">points</button>
+    <button class="tool" id="snapBtn">snap</button>
+    <button class="tool" id="interpBtn">lin</button>
+  </div>
+  <div class="shapes">
+    <button data-shape="up">rampe ↗</button><button data-shape="down">rampe ↘</button>
+    <button data-shape="tri">triangle</button><button data-shape="sine">sinus</button>
+    <button data-shape="steps">paliers</button><button data-shape="rand">aléatoire</button>
+    <button data-shape="rev">inverser ⇄</button><button data-shape="flip">miroir ⇅</button>
+  </div>
+  <div class="field"><span class="lbl">Cycles</span><div class="ctl" id="cyclesCtl"></div></div>
+  <div class="field"><span class="lbl">Track</span><div class="ctl"><select id="laneTrack"></select></div></div>
+  <div class="field"><span class="lbl">Résolution</span><div class="ctl" id="laneResCtl"></div></div>
+  <div class="field"><span class="lbl">Paramètre</span><div class="ctl">
+    <button class="tool" id="laneParam">—</button></div></div>
+  <div class="rowops"><button id="clearCurve">effacer</button><button id="delLane" class="danger">supprimer la lane</button></div>
+  <p class="hint" id="curveHint"></p>
+</div></div>
+
+<!-- ============ sélecteur de paramètre ============ -->
+<div class="sheet full" id="pickSheet"><div class="sheet-in">
+  <div class="sheet-h"><h2>Paramètre</h2><button class="x" data-close>✕</button></div>
+  <input type="search" id="pickSearch" placeholder="filtre, reverb, grain, lfo…">
+  <div id="pickList"></div>
+</div></div>
+
+<!-- ============ songs ============ -->
+<div class="sheet" id="songsSheet"><div class="sheet-in">
+  <div class="sheet-h"><h2>Songs</h2><button class="x" data-close>✕</button></div>
+  <div id="songsList"></div>
+  <button class="addbtn" id="newSong">+ nouvelle song</button>
+  <div class="field" style="margin-top:12px"><span class="lbl">Nom</span><div class="ctl"><input type="text" id="songName"></div></div>
+  <div class="field"><span class="lbl">Fin de song</span><div class="ctl"><select id="endSel">
+    <option value="loop">Boucler</option><option value="stop">Stop</option></select></div></div>
+  <div class="rowops"><button id="dupSong">dupliquer</button><button id="impBtn">importer json</button>
+    <button id="delSong" class="danger">supprimer</button></div>
+
+  <div class="sheet-h" style="margin-top:20px"><h2>Versions</h2><span class="tag" id="verCount"></span></div>
+  <div class="field"><span class="lbl">Étiquette</span><div class="ctl">
+    <input type="text" id="verLabel" placeholder="avant le nouveau break"></div></div>
+  <button class="addbtn" id="snapBtn">enregistrer une version</button>
+  <div id="verList"></div>
+  <p class="hint">Chaque version est une copie complète de la song, datée, gardée sur l'appareil.
+  Les 40 dernières sont conservées. Une version est prise automatiquement avant tout import ou restauration.</p>
+  <input type="file" id="impIn" accept=".json" hidden>
+  <p class="hint">Export = un JSON par song, à plat et lisible, prêt à committer.</p>
+
+  <div class="sheet-h" style="margin-top:20px"><h2>Synchro</h2><span class="tag" id="syncTag">hors ligne</span></div>
+  <div class="field"><span class="lbl">Mode</span><div class="ctl"><select id="syncMode">
+    <option value="off">Appareil seulement</option>
+    <option value="cf">Serveur de l'app</option>
+    <option value="gh">Dépôt GitHub</option>
+  </select></div></div>
+  <div id="ghCfg" style="display:none">
+    <div class="field"><span class="lbl">Dépôt</span><div class="ctl">
+      <input type="text" id="ghRepo" placeholder="pseudo/songverk-data"></div></div>
+    <div class="field"><span class="lbl">Branche</span><div class="ctl">
+      <input type="text" id="ghBranch" placeholder="main"></div></div>
+    <div class="field"><span class="lbl">Jeton</span><div class="ctl">
+      <input type="text" id="ghTok" placeholder="github_pat_…"></div></div>
+  </div>
+  <div class="rowops">
+    <button id="pullBtn">récupérer</button>
+    <button id="pushBtn">envoyer</button>
+    <button id="syncBtn">tout synchroniser</button>
+  </div>
+  <p class="hint" id="syncState">Les songs restent sur l'appareil. Choisis un mode pour travailler depuis plusieurs machines.</p>
+</div></div>
+
+<script type="application/json" id="paramdb">{"sections":["Track","Audio Track: Trig","Audio Track: Source","Machine: Single Player","Machine: Multi Player","Machine: Grainer","Machine: Wavefinder","Audio Track: Filter","Audio Track: Amp","Audio Track: FX","Audio Track: Mod","Audio Track: Subtrack 1","Audio Track: Subtrack 2","Audio Track: Subtrack 3","Audio Track: Subtrack 4","Audio Track: Subtrack 5","Audio Track: Subtrack 6","Audio Track: Subtrack 7","Audio Track: Subtrack 8","Bus Track","Bus Track: Trig","Bus Track: FX","Bus Track: Mod","Send Track","Send Track: Trig","Send Track: FX","Send Track: Mod","Mix Track","Mix Track: Trig","Mix Track: Source","Mix Track: Levels","Mix Track: FX","Mix Track: Mod","FX: Chrono Pitch","FX: Comb ± Filter","FX: Compressor","FX: Daisy Delay","FX: Degrader","FX: Dirtshaper","FX: Filter Folder","FX: Filterbank","FX: Frequency Warper","FX: Infinite Flanger","FX: Low-pass Filter","FX: Multimode Filter","FX: Panoramic Chorus","FX: Phase 98","FX: Rumsklang Reverb","FX: Saturator Delay","FX: Steel Box Reverb","FX: Supervoid Reverb","FX: Warble"],"params":[{"s":0,"n":"Track: Global Mute","c":94,"mi":0,"ma":127,"d":0},{"s":0,"n":"Track: Level","c":95,"mi":0,"ma":127,"d":100},{"s":1,"n":"Trig: Note","c":3,"mi":0,"ma":127,"d":60},{"s":1,"n":"Trig: Velocity","c":4,"mi":0,"ma":127,"d":100},{"s":1,"n":"Trig: Note Length","c":5,"mi":0,"ma":127},{"s":1,"n":"Trig: Retrig Enabled","m":0,"l":42,"mi":0,"ma":16383,"d":0},{"s":1,"n":"Trig: Retrig Time","m":0,"l":43,"mi":0,"ma":16383,"d":0},{"s":1,"n":"Trig: Retrig Velocity","m":0,"l":44,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":1,"n":"Trig: Portamento Time","c":9,"mi":0,"ma":127,"d":63,"ctr":1},{"s":1,"n":"Trig: Portamento Enabled","c":65,"mi":0,"ma":127,"d":0},{"s":2,"n":"Source: Parameter A","c":16,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter B","c":17,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter C","c":18,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter D","c":19,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter E","c":20,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter F","c":21,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter G","c":22,"mi":0,"ma":127},{"s":2,"n":"Source: Parameter H","c":23,"mi":0,"ma":127},{"s":3,"n":"Single Player: Tune","c":16,"mi":0,"ma":127,"ctr":1},{"s":3,"n":"Single Player: Play Mode","c":17,"mi":0,"ma":127},{"s":3,"n":"Single Player: Loop Crossfade","c":18,"mi":0,"ma":127},{"s":3,"n":"Single Player: Sample Slot","c":19,"mi":0,"ma":127},{"s":3,"n":"Single Player: Start","c":20,"mi":0,"ma":127},{"s":3,"n":"Single Player: Loop Start","c":21,"mi":0,"ma":127},{"s":3,"n":"Single Player: Loop End","c":22,"mi":0,"ma":127},{"s":3,"n":"Single Player: End","c":23,"mi":0,"ma":127},{"s":4,"n":"Multi Player: Tune","c":16,"mi":0,"ma":127,"ctr":1},{"s":4,"n":"Multi Player: Level","c":20,"mi":0,"ma":127},{"s":4,"n":"Multi Player: Vibrato Depth","c":21,"mi":0,"ma":127},{"s":4,"n":"Multi Player: Vibrato Speed","c":22,"mi":0,"ma":127},{"s":4,"n":"Multi Player: Vibrato Fade","c":23,"mi":0,"ma":127},{"s":5,"n":"Grainer: Tune","c":16,"mi":0,"ma":127,"ctr":1},{"s":5,"n":"Grainer: Density","c":17,"mi":0,"ma":127},{"s":5,"n":"Grainer: Size","c":18,"mi":0,"ma":127},{"s":5,"n":"Grainer: Sample Slot","c":19,"mi":0,"ma":127},{"s":5,"n":"Grainer: Position","c":20,"mi":0,"ma":127},{"s":5,"n":"Grainer: Scan","c":21,"mi":0,"ma":127,"ctr":1},{"s":5,"n":"Grainer: Spread","c":22,"mi":0,"ma":127},{"s":5,"n":"Grainer: Pan","c":23,"mi":0,"ma":127},{"s":5,"n":"Grainer: Grain Amount","c":24,"mi":0,"ma":127},{"s":5,"n":"Grainer: Direction","c":25,"mi":0,"ma":127,"ctr":1},{"s":5,"n":"Grainer: Window Fade","c":26,"mi":0,"ma":127},{"s":5,"n":"Grainer: Window Shape","c":27,"mi":0,"ma":127},{"s":5,"n":"Grainer: Play Mode","c":30,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Tune","c":16,"mi":0,"ma":127,"ctr":1},{"s":6,"n":"Wavefinder Osc 1: Level","c":17,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Position","c":18,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Wavetable Slot","c":19,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Speed","c":20,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Animate Level","c":21,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 1: Animate Position","c":22,"mi":0,"ma":127,"ctr":1},{"s":6,"n":"Wavefinder Osc 1: Animate Shape","c":23,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Detune","c":24,"mi":0,"ma":127,"ctr":1},{"s":6,"n":"Wavefinder Osc 2: Level","c":25,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Position","c":26,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Wavetable Slot","c":27,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Speed","c":28,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Animate Level","c":29,"mi":0,"ma":127},{"s":6,"n":"Wavefinder Osc 2: Animate Position","c":30,"mi":0,"ma":127,"ctr":1},{"s":6,"n":"Wavefinder Osc 2: Animate Shape","c":31,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter A","c":70,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter B","c":71,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter C","c":72,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter D","c":73,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter E","c":74,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter F","c":75,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter G","c":76,"mi":0,"ma":127},{"s":7,"n":"Filter: Parameter H","c":77,"mi":0,"ma":127},{"s":7,"n":"Filter: Base","c":78,"mi":0,"ma":127},{"s":7,"n":"Filter: Width","c":79,"mi":0,"ma":127},{"s":7,"n":"Filter: Env Reset","m":0,"l":45,"mi":0,"ma":16383},{"s":7,"n":"Filter: Env Delay","m":0,"l":46,"mi":0,"ma":16383},{"s":7,"n":"Filter: Key Tracking","m":0,"l":47,"mi":0,"ma":16383},{"s":8,"n":"Amp: Attack","c":83,"mi":0,"ma":127,"d":0},{"s":8,"n":"Amp: Hold","c":84,"mi":0,"ma":127,"d":127},{"s":8,"n":"Amp: Decay","c":85,"mi":0,"ma":127,"d":64},{"s":8,"n":"Amp: Sustain","c":86,"mi":0,"ma":127,"d":127},{"s":8,"n":"Amp: Release","c":87,"mi":0,"ma":127,"d":32},{"s":8,"n":"Amp: Overdrive","c":88,"mi":0,"ma":127,"d":0},{"s":8,"n":"Amp: Pan","c":10,"mi":0,"ma":127,"d":63,"ctr":1},{"s":8,"n":"Amp: Volume","c":89,"mi":0,"ma":127,"d":110},{"s":8,"n":"Amp: Mode","m":0,"l":48,"mi":0,"ma":16383,"d":12288},{"s":8,"n":"Amp: Reset","m":0,"l":49,"mi":0,"ma":16383,"d":12288},{"s":9,"n":"FX: Send 1 Amount","c":44,"mi":0,"ma":127},{"s":9,"n":"FX: Send 2 Amount","c":45,"mi":0,"ma":127},{"s":9,"n":"FX: Send 3 Amount","c":46,"mi":0,"ma":127},{"s":9,"n":"FX: Routing Destination","c":47,"mi":0,"ma":127,"d":0},{"s":9,"n":"FX 1: Parameter A","c":48,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter B","c":49,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter C","c":50,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter D","c":51,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter E","c":52,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter F","c":53,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter G","c":54,"mi":0,"ma":127},{"s":9,"n":"FX 1: Parameter H","c":55,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter A","c":56,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter B","c":57,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter C","c":58,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter D","c":59,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter E","c":60,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter F","c":61,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter G","c":62,"mi":0,"ma":127},{"s":9,"n":"FX 2: Parameter H","c":63,"mi":0,"ma":127},{"s":10,"n":"Voice LFO 1: Speed","c":102,"mi":0,"ma":127,"d":96,"ctr":1},{"s":10,"n":"Voice LFO 1: Multiplier","c":103,"mi":0,"ma":127,"d":8},{"s":10,"n":"Voice LFO 1: Fade","m":0,"l":3,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":10,"n":"Voice LFO 1: Waveform","m":0,"l":5,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 1: Start Phase/Smoothing","m":0,"l":6,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 1: Mode","m":0,"l":7,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 1: Depth","c":104,"mi":0,"ma":127,"d":63,"ctr":1},{"s":10,"n":"Voice LFO 2: Speed","c":105,"mi":0,"ma":127,"d":96,"ctr":1},{"s":10,"n":"Voice LFO 2: Multiplier","c":106,"mi":0,"ma":127,"d":18},{"s":10,"n":"Voice LFO 2: Fade","m":0,"l":11,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":10,"n":"Voice LFO 2: Waveform","m":0,"l":13,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 2: Start Phase/Smoothing","m":0,"l":14,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 2: Mode","m":0,"l":15,"mi":0,"ma":16383},{"s":10,"n":"Voice LFO 2: Depth","c":107,"mi":0,"ma":127,"d":63,"ctr":1},{"s":10,"n":"Mod Env: Attack","m":0,"l":17,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Decay","m":0,"l":18,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Sustain","m":0,"l":19,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Release","m":0,"l":20,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Reset","m":0,"l":21,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Delay","m":0,"l":22,"mi":0,"ma":16383},{"s":10,"n":"Mod Env: Depth","c":110,"mi":0,"ma":127,"d":97,"ctr":1},{"s":10,"n":"FX LFO 1: Speed","c":111,"mi":0,"ma":127,"d":95,"ctr":1},{"s":10,"n":"FX LFO 1: Multiplier","c":112,"mi":0,"ma":127,"d":18},{"s":10,"n":"FX LFO 1: Fade","m":0,"l":28,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":10,"n":"FX LFO 1: Waveform","m":0,"l":30,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 1: Start Phase/Smoothing","m":0,"l":31,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 1: Mode","m":0,"l":32,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 1: Depth","c":113,"mi":0,"ma":127,"d":63,"ctr":1},{"s":10,"n":"FX LFO 2: Speed","c":114,"mi":0,"ma":127,"d":95,"ctr":1},{"s":10,"n":"FX LFO 2: Multiplier","c":115,"mi":0,"ma":127,"d":8},{"s":10,"n":"FX LFO 2: Fade","m":0,"l":36,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":10,"n":"FX LFO 2: Waveform","m":0,"l":38,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 2: Start Phase/Smoothing","m":0,"l":39,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 2: Mode","m":0,"l":40,"mi":0,"ma":16383},{"s":10,"n":"FX LFO 2: Depth","c":116,"mi":0,"ma":127,"d":63,"ctr":1},{"s":11,"n":"Source: Tune","m":1,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":11,"n":"Source: Play Mode","m":1,"l":17,"mi":0,"ma":16383},{"s":11,"n":"Source: Start","m":1,"l":20,"mi":0,"ma":16383},{"s":11,"n":"Source: Length","m":1,"l":21,"mi":0,"ma":16383},{"s":11,"n":"Source: Loop Start","m":1,"l":22,"mi":0,"ma":16383},{"s":11,"n":"Filter: Attack","m":1,"l":70,"mi":0,"ma":16383},{"s":11,"n":"Filter: Decay","m":1,"l":71,"mi":0,"ma":16383},{"s":11,"n":"Filter: Sustain","m":1,"l":72,"mi":0,"ma":16383},{"s":11,"n":"Filter: Release","m":1,"l":73,"mi":0,"ma":16383},{"s":11,"n":"Filter: Frequency","m":1,"l":74,"mi":0,"ma":16383},{"s":11,"n":"Filter: Resonance","m":1,"l":75,"mi":0,"ma":16383},{"s":11,"n":"Filter: Type","m":1,"l":76,"mi":0,"ma":16383},{"s":11,"n":"Filter: Env Depth","m":1,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":11,"n":"Filter: Env Delay","m":1,"l":46,"mi":0,"ma":16383},{"s":11,"n":"Filter: Base","m":1,"l":78,"mi":0,"ma":16383},{"s":11,"n":"Filter: Width","m":1,"l":79,"mi":0,"ma":16383},{"s":11,"n":"Filter: Frequency Spread","m":1,"l":80,"mi":0,"ma":16383},{"s":11,"n":"Filter: Env Reset","m":1,"l":45,"mi":0,"ma":16383},{"s":11,"n":"Amp: Attack","m":1,"l":83,"mi":0,"ma":16383,"d":0},{"s":11,"n":"Amp: Hold","m":1,"l":84,"mi":0,"ma":16383,"d":16256},{"s":11,"n":"Amp: Decay","m":1,"l":85,"mi":0,"ma":16383,"d":8192},{"s":11,"n":"Amp: Sustain","m":1,"l":86,"mi":0,"ma":16383,"d":16256},{"s":11,"n":"Amp: Release","m":1,"l":87,"mi":0,"ma":16383,"d":4096},{"s":11,"n":"Amp: Overdrive","m":1,"l":88,"mi":0,"ma":16383,"d":0},{"s":11,"n":"Amp: Pan","m":1,"l":10,"mi":0,"ma":16383,"d":8064,"ctr":1},{"s":11,"n":"Amp: Volume","m":1,"l":89,"mi":0,"ma":16383,"d":14080},{"s":11,"n":"Amp: Mode","m":1,"l":48,"mi":0,"ma":16383,"d":0},{"s":11,"n":"Amp: Env Reset","m":1,"l":49,"mi":0,"ma":16383,"d":12288},{"s":11,"n":"Subtrack LFO 1: Speed","m":1,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":11,"n":"Subtrack LFO 1: Multiplier","m":1,"l":103,"mi":0,"ma":16383,"d":1024},{"s":11,"n":"Subtrack LFO 1: Fade","m":1,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":11,"n":"Subtrack LFO 1: Waveform","m":1,"l":106,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":1,"l":107,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 1: Mode","m":1,"l":108,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 1: Depth","m":1,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":11,"n":"Subtrack LFO 2: Speed","m":1,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":11,"n":"Subtrack LFO 2: Multiplier","m":1,"l":111,"mi":0,"ma":16383,"d":2389},{"s":11,"n":"Subtrack LFO 2: Fade","m":1,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":11,"n":"Subtrack LFO 2: Waveform","m":1,"l":114,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":1,"l":115,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 2: Mode","m":1,"l":116,"mi":0,"ma":16383},{"s":11,"n":"Subtrack LFO 2: Depth","m":1,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":11,"n":"Subtrack Mod Env: Attack","m":1,"l":118,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Decay","m":1,"l":119,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Sustain","m":1,"l":120,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Release","m":1,"l":121,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Reset","m":1,"l":122,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Delay","m":1,"l":123,"mi":0,"ma":16383},{"s":11,"n":"Subtrack Mod Env: Depth","m":1,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":12,"n":"Source: Tune","m":2,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":12,"n":"Source: Play Mode","m":2,"l":17,"mi":0,"ma":16383},{"s":12,"n":"Source: Start","m":2,"l":20,"mi":0,"ma":16383},{"s":12,"n":"Source: Length","m":2,"l":21,"mi":0,"ma":16383},{"s":12,"n":"Source: Loop Start","m":2,"l":22,"mi":0,"ma":16383},{"s":12,"n":"Filter: Attack","m":2,"l":70,"mi":0,"ma":16383},{"s":12,"n":"Filter: Decay","m":2,"l":71,"mi":0,"ma":16383},{"s":12,"n":"Filter: Sustain","m":2,"l":72,"mi":0,"ma":16383},{"s":12,"n":"Filter: Release","m":2,"l":73,"mi":0,"ma":16383},{"s":12,"n":"Filter: Frequency","m":2,"l":74,"mi":0,"ma":16383},{"s":12,"n":"Filter: Resonance","m":2,"l":75,"mi":0,"ma":16383},{"s":12,"n":"Filter: Type","m":2,"l":76,"mi":0,"ma":16383},{"s":12,"n":"Filter: Env Depth","m":2,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":12,"n":"Filter: Env Delay","m":2,"l":46,"mi":0,"ma":16383},{"s":12,"n":"Filter: Base","m":2,"l":78,"mi":0,"ma":16383},{"s":12,"n":"Filter: Width","m":2,"l":79,"mi":0,"ma":16383},{"s":12,"n":"Filter: Frequency Spread","m":2,"l":80,"mi":0,"ma":16383},{"s":12,"n":"Filter: Env Reset","m":2,"l":45,"mi":0,"ma":16383},{"s":12,"n":"Amp: Attack","m":2,"l":83,"mi":0,"ma":16383,"d":0},{"s":12,"n":"Amp: Hold","m":2,"l":84,"mi":0,"ma":16383,"d":16256},{"s":12,"n":"Amp: Decay","m":2,"l":85,"mi":0,"ma":16383,"d":8192},{"s":12,"n":"Amp: Sustain","m":2,"l":86,"mi":0,"ma":16383,"d":16256},{"s":12,"n":"Amp: Release","m":2,"l":87,"mi":0,"ma":16383,"d":4096},{"s":12,"n":"Amp: Overdrive","m":2,"l":88,"mi":0,"ma":16383,"d":0},{"s":12,"n":"Amp: Pan","m":2,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":12,"n":"Amp: Volume","m":2,"l":89,"mi":0,"ma":16383,"d":14080},{"s":12,"n":"Amp: Mode","m":2,"l":48,"mi":0,"ma":16383,"d":0},{"s":12,"n":"Amp: Env Reset","m":2,"l":49,"mi":0,"ma":16383,"d":12288},{"s":12,"n":"Subtrack LFO 1: Speed","m":2,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":12,"n":"Subtrack LFO 1: Multiplier","m":2,"l":103,"mi":0,"ma":16383,"d":1024},{"s":12,"n":"Subtrack LFO 1: Fade","m":2,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":12,"n":"Subtrack LFO 1: Waveform","m":2,"l":106,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":2,"l":107,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 1: Mode","m":2,"l":108,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 1: Depth","m":2,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":12,"n":"Subtrack LFO 2: Speed","m":2,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":12,"n":"Subtrack LFO 2: Multiplier","m":2,"l":111,"mi":0,"ma":16383,"d":2389},{"s":12,"n":"Subtrack LFO 2: Fade","m":2,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":12,"n":"Subtrack LFO 2: Waveform","m":2,"l":114,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":2,"l":115,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 2: Mode","m":2,"l":116,"mi":0,"ma":16383},{"s":12,"n":"Subtrack LFO 2: Depth","m":2,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":12,"n":"Subtrack Mod Env: Attack","m":2,"l":118,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Decay","m":2,"l":119,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Sustain","m":2,"l":120,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Release","m":2,"l":121,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Reset","m":2,"l":122,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Delay","m":2,"l":123,"mi":0,"ma":16383},{"s":12,"n":"Subtrack Mod Env: Depth","m":2,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":13,"n":"Source: Tune","m":3,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":13,"n":"Source: Play Mode","m":3,"l":17,"mi":0,"ma":16383},{"s":13,"n":"Source: Start","m":3,"l":20,"mi":0,"ma":16383},{"s":13,"n":"Source: Length","m":3,"l":21,"mi":0,"ma":16383},{"s":13,"n":"Source: Loop Start","m":3,"l":22,"mi":0,"ma":16383},{"s":13,"n":"Filter: Attack","m":3,"l":70,"mi":0,"ma":16383},{"s":13,"n":"Filter: Decay","m":3,"l":71,"mi":0,"ma":16383},{"s":13,"n":"Filter: Sustain","m":3,"l":72,"mi":0,"ma":16383},{"s":13,"n":"Filter: Release","m":3,"l":73,"mi":0,"ma":16383},{"s":13,"n":"Filter: Frequency","m":3,"l":74,"mi":0,"ma":16383},{"s":13,"n":"Filter: Resonance","m":3,"l":75,"mi":0,"ma":16383},{"s":13,"n":"Filter: Type","m":3,"l":76,"mi":0,"ma":16383},{"s":13,"n":"Filter: Env Depth","m":3,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":13,"n":"Filter: Env Delay","m":3,"l":46,"mi":0,"ma":16383},{"s":13,"n":"Filter: Base","m":3,"l":78,"mi":0,"ma":16383},{"s":13,"n":"Filter: Width","m":3,"l":79,"mi":0,"ma":16383},{"s":13,"n":"Filter: Frequency Spread","m":3,"l":80,"mi":0,"ma":16383},{"s":13,"n":"Filter: Env Reset","m":3,"l":45,"mi":0,"ma":16383},{"s":13,"n":"Amp: Attack","m":3,"l":83,"mi":0,"ma":16383,"d":0},{"s":13,"n":"Amp: Hold","m":3,"l":84,"mi":0,"ma":16383,"d":16256},{"s":13,"n":"Amp: Decay","m":3,"l":85,"mi":0,"ma":16383,"d":8192},{"s":13,"n":"Amp: Sustain","m":3,"l":86,"mi":0,"ma":16383,"d":16256},{"s":13,"n":"Amp: Release","m":3,"l":87,"mi":0,"ma":16383,"d":4096},{"s":13,"n":"Amp: Overdrive","m":3,"l":88,"mi":0,"ma":16383,"d":0},{"s":13,"n":"Amp: Pan","m":3,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":13,"n":"Amp: Volume","m":3,"l":89,"mi":0,"ma":16383,"d":14080},{"s":13,"n":"Amp: Mode","m":3,"l":48,"mi":0,"ma":16383,"d":0},{"s":13,"n":"Amp: Env Reset","m":3,"l":49,"mi":0,"ma":16383,"d":12288},{"s":13,"n":"Subtrack LFO 1: Speed","m":3,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":13,"n":"Subtrack LFO 1: Multiplier","m":3,"l":103,"mi":0,"ma":16383,"d":1024},{"s":13,"n":"Subtrack LFO 1: Fade","m":3,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":13,"n":"Subtrack LFO 1: Waveform","m":3,"l":106,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":3,"l":107,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 1: Mode","m":3,"l":108,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 1: Depth","m":3,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":13,"n":"Subtrack LFO 2: Speed","m":3,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":13,"n":"Subtrack LFO 2: Multiplier","m":3,"l":111,"mi":0,"ma":16383,"d":2389},{"s":13,"n":"Subtrack LFO 2: Fade","m":3,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":13,"n":"Subtrack LFO 2: Waveform","m":3,"l":114,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":3,"l":115,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 2: Mode","m":3,"l":116,"mi":0,"ma":16383},{"s":13,"n":"Subtrack LFO 2: Depth","m":3,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":13,"n":"Subtrack Mod Env: Attack","m":3,"l":118,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Decay","m":3,"l":119,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Sustain","m":3,"l":120,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Release","m":3,"l":121,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Reset","m":3,"l":122,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Delay","m":3,"l":123,"mi":0,"ma":16383},{"s":13,"n":"Subtrack Mod Env: Depth","m":3,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":14,"n":"Source: Tune","m":4,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":14,"n":"Source: Play Mode","m":4,"l":17,"mi":0,"ma":16383},{"s":14,"n":"Source: Start","m":4,"l":20,"mi":0,"ma":16383},{"s":14,"n":"Source: Length","m":4,"l":21,"mi":0,"ma":16383},{"s":14,"n":"Source: Loop Start","m":4,"l":22,"mi":0,"ma":16383},{"s":14,"n":"Filter: Attack","m":4,"l":70,"mi":0,"ma":16383},{"s":14,"n":"Filter: Decay","m":4,"l":71,"mi":0,"ma":16383},{"s":14,"n":"Filter: Sustain","m":4,"l":72,"mi":0,"ma":16383},{"s":14,"n":"Filter: Release","m":4,"l":73,"mi":0,"ma":16383},{"s":14,"n":"Filter: Frequency","m":4,"l":74,"mi":0,"ma":16383},{"s":14,"n":"Filter: Resonance","m":4,"l":75,"mi":0,"ma":16383},{"s":14,"n":"Filter: Type","m":4,"l":76,"mi":0,"ma":16383},{"s":14,"n":"Filter: Env Depth","m":4,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":14,"n":"Filter: Env Delay","m":4,"l":46,"mi":0,"ma":16383},{"s":14,"n":"Filter: Base","m":4,"l":78,"mi":0,"ma":16383},{"s":14,"n":"Filter: Width","m":4,"l":79,"mi":0,"ma":16383},{"s":14,"n":"Filter: Frequency Spread","m":4,"l":80,"mi":0,"ma":16383},{"s":14,"n":"Filter: Env Reset","m":4,"l":45,"mi":0,"ma":16383},{"s":14,"n":"Amp: Attack","m":4,"l":83,"mi":0,"ma":16383,"d":0},{"s":14,"n":"Amp: Hold","m":4,"l":84,"mi":0,"ma":16383,"d":16256},{"s":14,"n":"Amp: Decay","m":4,"l":85,"mi":0,"ma":16383,"d":8192},{"s":14,"n":"Amp: Sustain","m":4,"l":86,"mi":0,"ma":16383,"d":16256},{"s":14,"n":"Amp: Release","m":4,"l":87,"mi":0,"ma":16383,"d":4096},{"s":14,"n":"Amp: Overdrive","m":4,"l":88,"mi":0,"ma":16383,"d":0},{"s":14,"n":"Amp: Pan","m":4,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":14,"n":"Amp: Volume","m":4,"l":89,"mi":0,"ma":16383,"d":14080},{"s":14,"n":"Amp: Mode","m":4,"l":48,"mi":0,"ma":16383,"d":0},{"s":14,"n":"Amp: Env Reset","m":4,"l":49,"mi":0,"ma":16383,"d":12288},{"s":14,"n":"Subtrack LFO 1: Speed","m":4,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":14,"n":"Subtrack LFO 1: Multiplier","m":4,"l":103,"mi":0,"ma":16383,"d":1024},{"s":14,"n":"Subtrack LFO 1: Fade","m":4,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":14,"n":"Subtrack LFO 1: Waveform","m":4,"l":106,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":4,"l":107,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 1: Mode","m":4,"l":108,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 1: Depth","m":4,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":14,"n":"Subtrack LFO 2: Speed","m":4,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":14,"n":"Subtrack LFO 2: Multiplier","m":4,"l":111,"mi":0,"ma":16383,"d":2389},{"s":14,"n":"Subtrack LFO 2: Fade","m":4,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":14,"n":"Subtrack LFO 2: Waveform","m":4,"l":114,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":4,"l":115,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 2: Mode","m":4,"l":116,"mi":0,"ma":16383},{"s":14,"n":"Subtrack LFO 2: Depth","m":4,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":14,"n":"Subtrack Mod Env: Attack","m":4,"l":118,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Decay","m":4,"l":119,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Sustain","m":4,"l":120,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Release","m":4,"l":121,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Reset","m":4,"l":122,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Delay","m":4,"l":123,"mi":0,"ma":16383},{"s":14,"n":"Subtrack Mod Env: Depth","m":4,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":15,"n":"Source: Tune","m":5,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":15,"n":"Source: Play Mode","m":5,"l":17,"mi":0,"ma":16383},{"s":15,"n":"Source: Start","m":5,"l":20,"mi":0,"ma":16383},{"s":15,"n":"Source: Length","m":5,"l":21,"mi":0,"ma":16383},{"s":15,"n":"Source: Loop Start","m":5,"l":22,"mi":0,"ma":16383},{"s":15,"n":"Filter: Attack","m":5,"l":70,"mi":0,"ma":16383},{"s":15,"n":"Filter: Decay","m":5,"l":71,"mi":0,"ma":16383},{"s":15,"n":"Filter: Sustain","m":5,"l":72,"mi":0,"ma":16383},{"s":15,"n":"Filter: Release","m":5,"l":73,"mi":0,"ma":16383},{"s":15,"n":"Filter: Frequency","m":5,"l":74,"mi":0,"ma":16383},{"s":15,"n":"Filter: Resonance","m":5,"l":75,"mi":0,"ma":16383},{"s":15,"n":"Filter: Type","m":5,"l":76,"mi":0,"ma":16383},{"s":15,"n":"Filter: Env Depth","m":5,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":15,"n":"Filter: Env Delay","m":5,"l":46,"mi":0,"ma":16383},{"s":15,"n":"Filter: Base","m":5,"l":78,"mi":0,"ma":16383},{"s":15,"n":"Filter: Width","m":5,"l":79,"mi":0,"ma":16383},{"s":15,"n":"Filter: Frequency Spread","m":5,"l":80,"mi":0,"ma":16383},{"s":15,"n":"Filter: Env Reset","m":5,"l":45,"mi":0,"ma":16383},{"s":15,"n":"Amp: Attack","m":5,"l":83,"mi":0,"ma":16383,"d":0},{"s":15,"n":"Amp: Hold","m":5,"l":84,"mi":0,"ma":16383,"d":16256},{"s":15,"n":"Amp: Decay","m":5,"l":85,"mi":0,"ma":16383,"d":8192},{"s":15,"n":"Amp: Sustain","m":5,"l":86,"mi":0,"ma":16383,"d":16256},{"s":15,"n":"Amp: Release","m":5,"l":87,"mi":0,"ma":16383,"d":4096},{"s":15,"n":"Amp: Overdrive","m":5,"l":88,"mi":0,"ma":16383,"d":0},{"s":15,"n":"Amp: Pan","m":5,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":15,"n":"Amp: Volume","m":5,"l":89,"mi":0,"ma":16383,"d":14080},{"s":15,"n":"Amp: Mode","m":5,"l":48,"mi":0,"ma":16383,"d":0},{"s":15,"n":"Amp: Env Reset","m":5,"l":49,"mi":0,"ma":16383,"d":12288},{"s":15,"n":"Subtrack LFO 1: Speed","m":5,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":15,"n":"Subtrack LFO 1: Multiplier","m":5,"l":103,"mi":0,"ma":16383,"d":1024},{"s":15,"n":"Subtrack LFO 1: Fade","m":5,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":15,"n":"Subtrack LFO 1: Waveform","m":5,"l":106,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":5,"l":107,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 1: Mode","m":5,"l":108,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 1: Depth","m":5,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":15,"n":"Subtrack LFO 2: Speed","m":5,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":15,"n":"Subtrack LFO 2: Multiplier","m":5,"l":111,"mi":0,"ma":16383,"d":2389},{"s":15,"n":"Subtrack LFO 2: Fade","m":5,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":15,"n":"Subtrack LFO 2: Waveform","m":5,"l":114,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":5,"l":115,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 2: Mode","m":5,"l":116,"mi":0,"ma":16383},{"s":15,"n":"Subtrack LFO 2: Depth","m":5,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":15,"n":"Subtrack Mod Env: Attack","m":5,"l":118,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Decay","m":5,"l":119,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Sustain","m":5,"l":120,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Release","m":5,"l":121,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Reset","m":5,"l":122,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Delay","m":5,"l":123,"mi":0,"ma":16383},{"s":15,"n":"Subtrack Mod Env: Depth","m":5,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":16,"n":"Source: Tune","m":6,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":16,"n":"Source: Play Mode","m":6,"l":17,"mi":0,"ma":16383},{"s":16,"n":"Source: Start","m":6,"l":20,"mi":0,"ma":16383},{"s":16,"n":"Source: Length","m":6,"l":21,"mi":0,"ma":16383},{"s":16,"n":"Source: Loop Start","m":6,"l":22,"mi":0,"ma":16383},{"s":16,"n":"Filter: Attack","m":6,"l":70,"mi":0,"ma":16383},{"s":16,"n":"Filter: Decay","m":6,"l":71,"mi":0,"ma":16383},{"s":16,"n":"Filter: Sustain","m":6,"l":72,"mi":0,"ma":16383},{"s":16,"n":"Filter: Release","m":6,"l":73,"mi":0,"ma":16383},{"s":16,"n":"Filter: Frequency","m":6,"l":74,"mi":0,"ma":16383},{"s":16,"n":"Filter: Resonance","m":6,"l":75,"mi":0,"ma":16383},{"s":16,"n":"Filter: Type","m":6,"l":76,"mi":0,"ma":16383},{"s":16,"n":"Filter: Env Depth","m":6,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":16,"n":"Filter: Env Delay","m":6,"l":46,"mi":0,"ma":16383},{"s":16,"n":"Filter: Base","m":6,"l":78,"mi":0,"ma":16383},{"s":16,"n":"Filter: Width","m":6,"l":79,"mi":0,"ma":16383},{"s":16,"n":"Filter: Frequency Spread","m":6,"l":80,"mi":0,"ma":16383},{"s":16,"n":"Filter: Env Reset","m":6,"l":45,"mi":0,"ma":16383},{"s":16,"n":"Amp: Attack","m":6,"l":83,"mi":0,"ma":16383,"d":0},{"s":16,"n":"Amp: Hold","m":6,"l":84,"mi":0,"ma":16383,"d":16256},{"s":16,"n":"Amp: Decay","m":6,"l":85,"mi":0,"ma":16383,"d":8192},{"s":16,"n":"Amp: Sustain","m":6,"l":86,"mi":0,"ma":16383,"d":16256},{"s":16,"n":"Amp: Release","m":6,"l":87,"mi":0,"ma":16383,"d":4096},{"s":16,"n":"Amp: Overdrive","m":6,"l":88,"mi":0,"ma":16383,"d":0},{"s":16,"n":"Amp: Pan","m":6,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":16,"n":"Amp: Volume","m":6,"l":89,"mi":0,"ma":16383,"d":14080},{"s":16,"n":"Amp: Mode","m":6,"l":48,"mi":0,"ma":16383,"d":0},{"s":16,"n":"Amp: Env Reset","m":6,"l":49,"mi":0,"ma":16383,"d":12288},{"s":16,"n":"Subtrack LFO 1: Speed","m":6,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":16,"n":"Subtrack LFO 1: Multiplier","m":6,"l":103,"mi":0,"ma":16383,"d":1024},{"s":16,"n":"Subtrack LFO 1: Fade","m":6,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":16,"n":"Subtrack LFO 1: Waveform","m":6,"l":106,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":6,"l":107,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 1: Mode","m":6,"l":108,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 1: Depth","m":6,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":16,"n":"Subtrack LFO 2: Speed","m":6,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":16,"n":"Subtrack LFO 2: Multiplier","m":6,"l":111,"mi":0,"ma":16383,"d":2389},{"s":16,"n":"Subtrack LFO 2: Fade","m":6,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":16,"n":"Subtrack LFO 2: Waveform","m":6,"l":114,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":6,"l":115,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 2: Mode","m":6,"l":116,"mi":0,"ma":16383},{"s":16,"n":"Subtrack LFO 2: Depth","m":6,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":16,"n":"Subtrack Mod Env: Attack","m":6,"l":118,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Decay","m":6,"l":119,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Sustain","m":6,"l":120,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Release","m":6,"l":121,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Reset","m":6,"l":122,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Delay","m":6,"l":123,"mi":0,"ma":16383},{"s":16,"n":"Subtrack Mod Env: Depth","m":6,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":17,"n":"Source: Tune","m":7,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":17,"n":"Source: Play Mode","m":7,"l":17,"mi":0,"ma":16383},{"s":17,"n":"Source: Start","m":7,"l":20,"mi":0,"ma":16383},{"s":17,"n":"Source: Length","m":7,"l":21,"mi":0,"ma":16383},{"s":17,"n":"Source: Loop Start","m":7,"l":22,"mi":0,"ma":16383},{"s":17,"n":"Filter: Attack","m":7,"l":70,"mi":0,"ma":16383},{"s":17,"n":"Filter: Decay","m":7,"l":71,"mi":0,"ma":16383},{"s":17,"n":"Filter: Sustain","m":7,"l":72,"mi":0,"ma":16383},{"s":17,"n":"Filter: Release","m":7,"l":73,"mi":0,"ma":16383},{"s":17,"n":"Filter: Frequency","m":7,"l":74,"mi":0,"ma":16383},{"s":17,"n":"Filter: Resonance","m":7,"l":75,"mi":0,"ma":16383},{"s":17,"n":"Filter: Type","m":7,"l":76,"mi":0,"ma":16383},{"s":17,"n":"Filter: Env Depth","m":7,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":17,"n":"Filter: Env Delay","m":7,"l":46,"mi":0,"ma":16383},{"s":17,"n":"Filter: Base","m":7,"l":78,"mi":0,"ma":16383},{"s":17,"n":"Filter: Width","m":7,"l":79,"mi":0,"ma":16383},{"s":17,"n":"Filter: Frequency Spread","m":7,"l":80,"mi":0,"ma":16383},{"s":17,"n":"Filter: Env Reset","m":7,"l":45,"mi":0,"ma":16383},{"s":17,"n":"Amp: Attack","m":7,"l":83,"mi":0,"ma":16383,"d":0},{"s":17,"n":"Amp: Hold","m":7,"l":84,"mi":0,"ma":16383,"d":16256},{"s":17,"n":"Amp: Decay","m":7,"l":85,"mi":0,"ma":16383,"d":8192},{"s":17,"n":"Amp: Sustain","m":7,"l":86,"mi":0,"ma":16383,"d":16256},{"s":17,"n":"Amp: Release","m":7,"l":87,"mi":0,"ma":16383,"d":4096},{"s":17,"n":"Amp: Overdrive","m":7,"l":88,"mi":0,"ma":16383,"d":0},{"s":17,"n":"Amp: Pan","m":7,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":17,"n":"Amp: Volume","m":7,"l":89,"mi":0,"ma":16383,"d":14080},{"s":17,"n":"Amp: Mode","m":7,"l":48,"mi":0,"ma":16383,"d":0},{"s":17,"n":"Amp: Env Reset","m":7,"l":49,"mi":0,"ma":16383,"d":12288},{"s":17,"n":"Subtrack LFO 1: Speed","m":7,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":17,"n":"Subtrack LFO 1: Multiplier","m":7,"l":103,"mi":0,"ma":16383,"d":1024},{"s":17,"n":"Subtrack LFO 1: Fade","m":7,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":17,"n":"Subtrack LFO 1: Waveform","m":7,"l":106,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":7,"l":107,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 1: Mode","m":7,"l":108,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 1: Depth","m":7,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":17,"n":"Subtrack LFO 2: Speed","m":7,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":17,"n":"Subtrack LFO 2: Multiplier","m":7,"l":111,"mi":0,"ma":16383,"d":2389},{"s":17,"n":"Subtrack LFO 2: Fade","m":7,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":17,"n":"Subtrack LFO 2: Waveform","m":7,"l":114,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":7,"l":115,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 2: Mode","m":7,"l":116,"mi":0,"ma":16383},{"s":17,"n":"Subtrack LFO 2: Depth","m":7,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":17,"n":"Subtrack Mod Env: Attack","m":7,"l":118,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Decay","m":7,"l":119,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Sustain","m":7,"l":120,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Release","m":7,"l":121,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Reset","m":7,"l":122,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Delay","m":7,"l":123,"mi":0,"ma":16383},{"s":17,"n":"Subtrack Mod Env: Depth","m":7,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":18,"n":"Source: Tune","m":8,"l":16,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":18,"n":"Source: Play Mode","m":8,"l":17,"mi":0,"ma":16383},{"s":18,"n":"Source: Start","m":8,"l":20,"mi":0,"ma":16383},{"s":18,"n":"Source: Length","m":8,"l":21,"mi":0,"ma":16383},{"s":18,"n":"Source: Loop Start","m":8,"l":22,"mi":0,"ma":16383},{"s":18,"n":"Filter: Attack","m":8,"l":70,"mi":0,"ma":16383},{"s":18,"n":"Filter: Decay","m":8,"l":71,"mi":0,"ma":16383},{"s":18,"n":"Filter: Sustain","m":8,"l":72,"mi":0,"ma":16383},{"s":18,"n":"Filter: Release","m":8,"l":73,"mi":0,"ma":16383},{"s":18,"n":"Filter: Frequency","m":8,"l":74,"mi":0,"ma":16383},{"s":18,"n":"Filter: Resonance","m":8,"l":75,"mi":0,"ma":16383},{"s":18,"n":"Filter: Type","m":8,"l":76,"mi":0,"ma":16383},{"s":18,"n":"Filter: Env Depth","m":8,"l":77,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":18,"n":"Filter: Env Delay","m":8,"l":46,"mi":0,"ma":16383},{"s":18,"n":"Filter: Base","m":8,"l":78,"mi":0,"ma":16383},{"s":18,"n":"Filter: Width","m":8,"l":79,"mi":0,"ma":16383},{"s":18,"n":"Filter: Frequency Spread","m":8,"l":80,"mi":0,"ma":16383},{"s":18,"n":"Filter: Env Reset","m":8,"l":45,"mi":0,"ma":16383},{"s":18,"n":"Amp: Attack","m":8,"l":83,"mi":0,"ma":16383,"d":0},{"s":18,"n":"Amp: Hold","m":8,"l":84,"mi":0,"ma":16383,"d":16256},{"s":18,"n":"Amp: Decay","m":8,"l":85,"mi":0,"ma":16383,"d":8192},{"s":18,"n":"Amp: Sustain","m":8,"l":86,"mi":0,"ma":16383,"d":16256},{"s":18,"n":"Amp: Release","m":8,"l":87,"mi":0,"ma":16383,"d":4096},{"s":18,"n":"Amp: Overdrive","m":8,"l":88,"mi":0,"ma":16383,"d":0},{"s":18,"n":"Amp: Pan","m":8,"l":10,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":18,"n":"Amp: Volume","m":8,"l":89,"mi":0,"ma":16383,"d":14080},{"s":18,"n":"Amp: Mode","m":8,"l":48,"mi":0,"ma":16383,"d":0},{"s":18,"n":"Amp: Env Reset","m":8,"l":49,"mi":0,"ma":16383,"d":12288},{"s":18,"n":"Subtrack LFO 1: Speed","m":8,"l":102,"mi":0,"ma":16383,"ctr":1},{"s":18,"n":"Subtrack LFO 1: Multiplier","m":8,"l":103,"mi":0,"ma":16383,"d":1024},{"s":18,"n":"Subtrack LFO 1: Fade","m":8,"l":104,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":18,"n":"Subtrack LFO 1: Waveform","m":8,"l":106,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 1: Start Phase/Smoothing","m":8,"l":107,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 1: Mode","m":8,"l":108,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 1: Depth","m":8,"l":109,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":18,"n":"Subtrack LFO 2: Speed","m":8,"l":110,"mi":0,"ma":16383,"ctr":1},{"s":18,"n":"Subtrack LFO 2: Multiplier","m":8,"l":111,"mi":0,"ma":16383,"d":2389},{"s":18,"n":"Subtrack LFO 2: Fade","m":8,"l":112,"mi":0,"ma":16383,"d":8192,"ctr":1},{"s":18,"n":"Subtrack LFO 2: Waveform","m":8,"l":114,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 2: Start Phase/Smoothing","m":8,"l":115,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 2: Mode","m":8,"l":116,"mi":0,"ma":16383},{"s":18,"n":"Subtrack LFO 2: Depth","m":8,"l":117,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":18,"n":"Subtrack Mod Env: Attack","m":8,"l":118,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Decay","m":8,"l":119,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Sustain","m":8,"l":120,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Release","m":8,"l":121,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Reset","m":8,"l":122,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Delay","m":8,"l":123,"mi":0,"ma":16383},{"s":18,"n":"Subtrack Mod Env: Depth","m":8,"l":125,"mi":0,"ma":16383,"d":8191,"ctr":1},{"s":19,"n":"Track: Global Mute","c":94,"mi":0,"ma":127,"d":0},{"s":19,"n":"Track: Level","c":95,"mi":0,"ma":127,"d":100},{"s":20,"n":"Trig: Note","c":3,"mi":0,"ma":127},{"s":20,"n":"Trig: Velocity","c":4,"mi":0,"ma":127},{"s":20,"n":"Trig: Note Length","c":5,"mi":0,"ma":127},{"s":21,"n":"FX: Send 1 Amount","c":44,"mi":0,"ma":127},{"s":21,"n":"FX: Send 2 Amount","c":45,"mi":0,"ma":127},{"s":21,"n":"FX: Send 3 Amount","c":46,"mi":0,"ma":127},{"s":21,"n":"FX: Routing Destination","c":47,"mi":0,"ma":127,"d":0},{"s":21,"n":"FX 1: Parameter A","c":48,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter B","c":49,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter C","c":50,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter D","c":51,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter E","c":52,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter F","c":53,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter G","c":54,"mi":0,"ma":127},{"s":21,"n":"FX 1: Parameter H","c":55,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter A","c":56,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter B","c":57,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter C","c":58,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter D","c":59,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter E","c":60,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter F","c":61,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter G","c":62,"mi":0,"ma":127},{"s":21,"n":"FX 2: Parameter H","c":63,"mi":0,"ma":127},{"s":22,"n":"LFO 1: Speed","c":111,"mi":0,"ma":127,"d":95,"ctr":1},{"s":22,"n":"LFO 1: Multiplier","c":112,"mi":0,"ma":127,"d":18},{"s":22,"n":"LFO 1: Depth","c":113,"mi":0,"ma":127,"d":63,"ctr":1},{"s":22,"n":"LFO 2: Speed","c":114,"mi":0,"ma":127,"d":95,"ctr":1},{"s":22,"n":"LFO 2: Multiplier","c":115,"mi":0,"ma":127,"d":8},{"s":22,"n":"LFO 2: Depth","c":116,"mi":0,"ma":127,"d":63,"ctr":1},{"s":23,"n":"Track: Global Mute","c":94,"mi":0,"ma":127,"d":0},{"s":23,"n":"Track: Level","c":95,"mi":0,"ma":127,"d":100},{"s":24,"n":"Trig: Note","c":3,"mi":0,"ma":127},{"s":24,"n":"Trig: Velocity","c":4,"mi":0,"ma":127},{"s":24,"n":"Trig: Note Length","c":5,"mi":0,"ma":127},{"s":25,"n":"FX: Routing Destination","c":47,"mi":0,"ma":127,"d":0},{"s":25,"n":"FX 1: Parameter A","c":48,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter B","c":49,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter C","c":50,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter D","c":51,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter E","c":52,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter F","c":53,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter G","c":54,"mi":0,"ma":127},{"s":25,"n":"FX 1: Parameter H","c":55,"mi":0,"ma":127},{"s":26,"n":"LFO 1: Speed","c":111,"mi":0,"ma":127,"d":95,"ctr":1},{"s":26,"n":"LFO 1: Multiplier","c":112,"mi":0,"ma":127,"d":18},{"s":26,"n":"LFO 1: Depth","c":113,"mi":0,"ma":127,"d":63,"ctr":1},{"s":26,"n":"LFO 2: Speed","c":114,"mi":0,"ma":127,"d":95,"ctr":1},{"s":26,"n":"LFO 2: Multiplier","c":115,"mi":0,"ma":127,"d":8},{"s":26,"n":"LFO 2: Depth","c":116,"mi":0,"ma":127,"d":63,"ctr":1},{"s":27,"n":"Track: Global Mute","c":94,"mi":0,"ma":127,"d":0},{"s":27,"n":"Track: Level","c":95,"mi":0,"ma":127,"d":100},{"s":28,"n":"Trig: Note","c":3,"mi":0,"ma":127},{"s":28,"n":"Trig: Velocity","c":4,"mi":0,"ma":127},{"s":28,"n":"Trig: Note Length","c":5,"mi":0,"ma":127},{"s":29,"n":"In A: Level","c":16,"mi":0,"ma":127},{"s":29,"n":"In A: Pan","c":17,"mi":0,"ma":127,"d":0,"ctr":1},{"s":29,"n":"In A: Routing Destination","c":18,"mi":0,"ma":127,"d":0},{"s":29,"n":"In B: Level","c":20,"mi":0,"ma":127},{"s":29,"n":"In B: Pan","c":21,"mi":0,"ma":127,"d":127,"ctr":1},{"s":29,"n":"In B: Routing Destination","c":22,"mi":0,"ma":127,"d":0},{"s":30,"n":"Track: 1 Level","c":70,"mi":0,"ma":127},{"s":30,"n":"Track: 2 Level","c":71,"mi":0,"ma":127},{"s":30,"n":"Track: 3 Level","c":72,"mi":0,"ma":127},{"s":30,"n":"Track: 4 Level","c":73,"mi":0,"ma":127},{"s":30,"n":"Track: 5 Level","c":74,"mi":0,"ma":127},{"s":30,"n":"Track: 6 Level","c":75,"mi":0,"ma":127},{"s":30,"n":"Track: 7 Level","c":76,"mi":0,"ma":127},{"s":30,"n":"Track: 8 Level","c":77,"mi":0,"ma":127},{"s":30,"n":"Bus: 1 Level","c":78,"mi":0,"ma":127},{"s":30,"n":"Bus: 2 Level","c":79,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter A","c":48,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter B","c":49,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter C","c":50,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter D","c":51,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter E","c":52,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter F","c":53,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter G","c":54,"mi":0,"ma":127},{"s":31,"n":"FX 1: Parameter H","c":55,"mi":0,"ma":127},{"s":32,"n":"LFO 1: Speed","c":111,"mi":0,"ma":127,"d":95,"ctr":1},{"s":32,"n":"LFO 1: Multiplier","c":112,"mi":0,"ma":127,"d":18},{"s":32,"n":"LFO 1: Depth","c":113,"mi":0,"ma":127,"d":63,"ctr":1},{"s":32,"n":"LFO 2: Speed","c":114,"mi":0,"ma":127,"d":95,"ctr":1},{"s":32,"n":"LFO 2: Multiplier","c":115,"mi":0,"ma":127,"d":8},{"s":32,"n":"LFO 2: Depth","c":116,"mi":0,"ma":127,"d":63,"ctr":1},{"s":33,"n":"FX 1: Tune","c":48,"mi":0,"ma":127,"d":63,"ctr":1},{"s":33,"n":"FX 1: Window","c":49,"mi":0,"ma":127,"d":32},{"s":33,"n":"FX 1: Feedback","c":50,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 1: LFO Depth","c":51,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 1: HP Filter","c":52,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 1: LP Filter","c":53,"mi":0,"ma":127,"d":127},{"s":33,"n":"FX 1: LFO Speed","c":54,"mi":0,"ma":127,"d":64,"ctr":1},{"s":33,"n":"FX 1: Dry/Wet","c":55,"mi":0,"ma":127,"d":64},{"s":33,"n":"FX 2: Tune","c":56,"mi":0,"ma":127,"d":63,"ctr":1},{"s":33,"n":"FX 2: Window","c":57,"mi":0,"ma":127,"d":32},{"s":33,"n":"FX 2: Feedback","c":58,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 2: LFO Depth","c":59,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 2: HP Filter","c":60,"mi":0,"ma":127,"d":0},{"s":33,"n":"FX 2: LP Filter","c":61,"mi":0,"ma":127,"d":127},{"s":33,"n":"FX 2: LFO Speed","c":62,"mi":0,"ma":127,"d":64,"ctr":1},{"s":33,"n":"FX 2: Dry/Wet","c":63,"mi":0,"ma":127,"d":64},{"s":34,"n":"FX 1: Modulation Speed","c":48,"mi":0,"ma":127},{"s":34,"n":"FX 1: Modulation Depth","c":49,"mi":0,"ma":127,"d":64},{"s":34,"n":"FX 1: Start Phase","c":50,"mi":0,"ma":127,"d":0},{"s":34,"n":"FX 1: Detune","c":51,"mi":0,"ma":127,"d":63,"ctr":1},{"s":34,"n":"FX 1: Frequency","c":52,"mi":0,"ma":127,"d":96},{"s":34,"n":"FX 1: Feedback","c":53,"mi":0,"ma":127,"d":0},{"s":34,"n":"FX 1: Lowpass Filter","c":54,"mi":0,"ma":127,"d":127},{"s":34,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":127},{"s":34,"n":"FX 2: Modulation Speed","c":56,"mi":0,"ma":127},{"s":34,"n":"FX 2: Modulation Depth","c":57,"mi":0,"ma":127,"d":64},{"s":34,"n":"FX 2: Start Phase","c":58,"mi":0,"ma":127,"d":0},{"s":34,"n":"FX 2: Detune","c":59,"mi":0,"ma":127,"d":63,"ctr":1},{"s":34,"n":"FX 2: Frequency","c":60,"mi":0,"ma":127,"d":96},{"s":34,"n":"FX 2: Feedback","c":61,"mi":0,"ma":127,"d":0},{"s":34,"n":"FX 2: Lowpass Filter","c":62,"mi":0,"ma":127,"d":127},{"s":34,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":127},{"s":35,"n":"FX 1: Threshold","c":48,"mi":0,"ma":127,"d":32},{"s":35,"n":"FX 1: Attack Time","c":49,"mi":0,"ma":127,"d":24},{"s":35,"n":"FX 1: Release Time","c":50,"mi":0,"ma":127,"d":32},{"s":35,"n":"FX 1: Makeup Gain","c":51,"mi":0,"ma":127,"d":63},{"s":35,"n":"FX 1: Ratio","c":52,"mi":0,"ma":127,"d":56},{"s":35,"n":"FX 1: Sidechain Filter","c":54,"mi":0,"ma":127,"d":63,"ctr":1},{"s":35,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":0},{"s":35,"n":"FX 2: Threshold","c":56,"mi":0,"ma":127},{"s":35,"n":"FX 2: Attack Time","c":57,"mi":0,"ma":127},{"s":35,"n":"FX 2: Release Time","c":58,"mi":0,"ma":127},{"s":35,"n":"FX 2: Makeup Gain","c":59,"mi":0,"ma":127},{"s":35,"n":"FX 2: Ratio","c":60,"mi":0,"ma":127,"d":56},{"s":35,"n":"FX 2: Sidechain Filter","c":62,"mi":0,"ma":127,"d":63,"ctr":1},{"s":35,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":0},{"s":36,"n":"FX 1: Drive","c":48,"mi":0,"ma":127,"d":32},{"s":36,"n":"FX 1: Delay Time Division","c":49,"mi":0,"ma":127},{"s":36,"n":"FX 1: Feedback","c":50,"mi":0,"ma":127,"d":96},{"s":36,"n":"FX 1: Width","c":51,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 1: Modulation","c":52,"mi":0,"ma":127,"d":32},{"s":36,"n":"FX 1: Skew","c":53,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 1: Filter","c":54,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 2: Drive","c":56,"mi":0,"ma":127,"d":32},{"s":36,"n":"FX 2: Delay Time Division","c":57,"mi":0,"ma":127},{"s":36,"n":"FX 2: Feedback","c":58,"mi":0,"ma":127,"d":96},{"s":36,"n":"FX 2: Width","c":59,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 2: Modulation","c":60,"mi":0,"ma":127,"d":32},{"s":36,"n":"FX 2: Skew","c":61,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 2: Filter","c":62,"mi":0,"ma":127,"d":63,"ctr":1},{"s":36,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":63,"ctr":1},{"s":37,"n":"FX 1: Bit Reduction","c":48,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Overdrive","c":49,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Sample Rate Redux","c":50,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Drop-outs","c":51,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Modulation Rate","c":52,"mi":0,"ma":127,"d":63,"ctr":1},{"s":37,"n":"FX 1: Modulation Depth","c":53,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Freeze","c":54,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 1: Freeze Time","c":55,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Bit Reduction","c":56,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Overdrive","c":57,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Sample Rate Redux","c":58,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Drop-outs","c":59,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Modulation Rate","c":60,"mi":0,"ma":127,"d":63,"ctr":1},{"s":37,"n":"FX 2: Modulation Depth","c":61,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Freeze","c":62,"mi":0,"ma":127,"d":0},{"s":37,"n":"FX 2: Freeze Time","c":63,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 1: Drive","c":48,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 1: Rectify","c":49,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 1: HPF","c":50,"mi":0,"ma":127,"d":63,"ctr":1},{"s":38,"n":"FX 1: LPF","c":51,"mi":0,"ma":127,"d":127},{"s":38,"n":"FX 1: Noise Amount","c":52,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 1: Noise Frequency","c":53,"mi":0,"ma":127,"d":63},{"s":38,"n":"FX 1: Noise Resonance","c":54,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 1: Dry/Wet","c":55,"mi":0,"ma":127,"d":127},{"s":38,"n":"FX 2: Drive","c":56,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 2: Rectify","c":57,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 2: HPF","c":58,"mi":0,"ma":127,"d":63,"ctr":1},{"s":38,"n":"FX 2: LPF","c":59,"mi":0,"ma":127,"d":127},{"s":38,"n":"FX 2: Noise Amount","c":60,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 2: Noise Frequency","c":61,"mi":0,"ma":127,"d":63},{"s":38,"n":"FX 2: Noise Resonance","c":62,"mi":0,"ma":127,"d":0},{"s":38,"n":"FX 2: Dry/Wet","c":63,"mi":0,"ma":127,"d":127},{"s":39,"n":"FX 1: In","c":48,"mi":0,"ma":127,"d":63,"ctr":1},{"s":39,"n":"FX 1: High Pass","c":49,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 1: Folder","c":50,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 1: Out","c":51,"mi":0,"ma":127,"d":63,"ctr":1},{"s":39,"n":"FX 1: Frequency","c":52,"mi":0,"ma":127,"d":127},{"s":39,"n":"FX 1: Resonance","c":53,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 1: Type","c":54,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 1: Post Distortion","c":55,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 2: In","c":56,"mi":0,"ma":127,"d":63,"ctr":1},{"s":39,"n":"FX 2: High Pass","c":57,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 2: Folder","c":58,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 2: Out","c":59,"mi":0,"ma":127,"d":63,"ctr":1},{"s":39,"n":"FX 2: Frequency","c":60,"mi":0,"ma":127,"d":127},{"s":39,"n":"FX 2: Resonance","c":61,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 2: Type","c":62,"mi":0,"ma":127,"d":0},{"s":39,"n":"FX 2: Post Distortion","c":63,"mi":0,"ma":127,"d":0},{"s":40,"n":"FX 1: Gain A","c":48,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain B","c":49,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain C","c":50,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain D","c":51,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain E","c":52,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain F","c":53,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain G","c":54,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 1: Gain H","c":55,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain A","c":56,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain B","c":57,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain C","c":58,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain D","c":59,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain E","c":60,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain F","c":61,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain G","c":62,"mi":0,"ma":127,"d":63,"ctr":1},{"s":40,"n":"FX 2: Gain H","c":63,"mi":0,"ma":127,"d":63,"ctr":1},{"s":41,"n":"FX 1: LFO Speed","c":48,"mi":0,"ma":127},{"s":41,"n":"FX 1: LFO Amount","c":49,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 1: LFO Start Phase","c":50,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 1: LFO Phase Offset","c":51,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 1: Shift Amount","c":52,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 1: Stereo Spread","c":53,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 1: Sideband","c":54,"mi":0,"ma":127,"d":127},{"s":41,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: LFO Speed","c":56,"mi":0,"ma":127},{"s":41,"n":"FX 2: LFO Amount","c":57,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: LFO Start Phase","c":58,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: LFO Phase Offset","c":59,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: Shift Amount","c":60,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: Stereo Spread","c":61,"mi":0,"ma":127,"d":0},{"s":41,"n":"FX 2: Sideband","c":62,"mi":0,"ma":127,"d":127},{"s":41,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":0},{"s":42,"n":"FX 1: Speed","c":48,"mi":0,"ma":127,"d":127,"ctr":1},{"s":42,"n":"FX 1: Depth","c":49,"mi":0,"ma":127,"d":127},{"s":42,"n":"FX 1: Downtune","c":50,"mi":0,"ma":127,"d":13},{"s":42,"n":"FX 1: Feedback","c":51,"mi":0,"ma":127,"d":32},{"s":42,"n":"FX 1: Feedback Filter Cutoff","c":52,"mi":0,"ma":127,"d":63},{"s":42,"n":"FX 2: Speed","c":56,"mi":0,"ma":127,"d":127,"ctr":1},{"s":42,"n":"FX 2: Depth","c":57,"mi":0,"ma":127,"d":127},{"s":42,"n":"FX 2: Downtune","c":58,"mi":0,"ma":127,"d":13},{"s":42,"n":"FX 2: Feedback","c":59,"mi":0,"ma":127,"d":32},{"s":42,"n":"FX 2: Feedback Filter Cutoff","c":60,"mi":0,"ma":127,"d":63},{"s":43,"n":"FX 1: LFO Speed","c":48,"mi":0,"ma":127},{"s":43,"n":"FX 1: LFO Depth","c":49,"mi":0,"ma":127,"d":0},{"s":43,"n":"FX 1: LFO Start Phase","c":50,"mi":0,"ma":127,"d":0},{"s":43,"n":"FX 1: LFO Phase Offset","c":51,"mi":0,"ma":127,"d":63,"ctr":1},{"s":43,"n":"FX 1: Cutoff Frequency","c":52,"mi":0,"ma":127,"d":127},{"s":43,"n":"FX 1: Resonance","c":53,"mi":0,"ma":127,"d":0},{"s":43,"n":"FX 1: Stereo Spread","c":55,"mi":0,"ma":127,"d":63,"ctr":1},{"s":43,"n":"FX 2: LFO Speed","c":56,"mi":0,"ma":127},{"s":43,"n":"FX 2: LFO Depth","c":57,"mi":0,"ma":127},{"s":43,"n":"FX 2: LFO Start Phase","c":58,"mi":0,"ma":127,"d":0},{"s":43,"n":"FX 2: LFO Phase Offset","c":59,"mi":0,"ma":127,"d":63,"ctr":1},{"s":43,"n":"FX 2: Cutoff Frequency","c":60,"mi":0,"ma":127,"d":127},{"s":43,"n":"FX 2: Resonance","c":61,"mi":0,"ma":127,"d":0},{"s":43,"n":"FX 2: Stereo Spread","c":63,"mi":0,"ma":127,"d":63,"ctr":1},{"s":44,"n":"FX 1: Envelope Attack Time","c":48,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 1: Envelope Decay Time","c":49,"mi":0,"ma":127,"d":64},{"s":44,"n":"FX 1: Envelope Sustain Level","c":50,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 1: Envelope Release Time","c":51,"mi":0,"ma":127,"d":64},{"s":44,"n":"FX 1: Cutoff Frequency","c":52,"mi":0,"ma":127,"d":127},{"s":44,"n":"FX 1: Resonance","c":53,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 1: Type","c":54,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 1: Envelope Depth","c":55,"mi":0,"ma":127,"d":63,"ctr":1},{"s":44,"n":"FX 2: Envelope Attack Time","c":56,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 2: Envelope Decay Time","c":57,"mi":0,"ma":127,"d":64},{"s":44,"n":"FX 2: Envelope Sustain Level","c":58,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 2: Envelope Release Time","c":59,"mi":0,"ma":127,"d":64},{"s":44,"n":"FX 2: Cutoff Frequency","c":60,"mi":0,"ma":127,"d":127},{"s":44,"n":"FX 2: Resonance","c":61,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 2: Type","c":62,"mi":0,"ma":127,"d":0},{"s":44,"n":"FX 2: Envelope Depth","c":63,"mi":0,"ma":127,"d":63,"ctr":1},{"s":45,"n":"FX 1: Depth","c":48,"mi":0,"ma":127,"d":72},{"s":45,"n":"FX 1: Speed","c":49,"mi":0,"ma":127,"d":72},{"s":45,"n":"FX 1: High-pass","c":50,"mi":0,"ma":127,"d":0},{"s":45,"n":"FX 1: Width","c":51,"mi":0,"ma":127,"d":48},{"s":45,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":0},{"s":45,"n":"FX 2: Depth","c":56,"mi":0,"ma":127,"d":72},{"s":45,"n":"FX 2: Speed","c":57,"mi":0,"ma":127,"d":72},{"s":45,"n":"FX 2: High-pass","c":58,"mi":0,"ma":127,"d":0},{"s":45,"n":"FX 2: Width","c":59,"mi":0,"ma":127,"d":48},{"s":45,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":0},{"s":46,"n":"FX 1: LFO Speed","c":48,"mi":0,"ma":127,"d":32},{"s":46,"n":"FX 1: LFO Depth","c":49,"mi":0,"ma":127,"d":16},{"s":46,"n":"FX 1: LFO Shape","c":50,"mi":0,"ma":127,"d":64},{"s":46,"n":"FX 1: LFO Phase Offset","c":51,"mi":0,"ma":127,"d":64},{"s":46,"n":"FX 1: Cutoff Frequency","c":52,"mi":0,"ma":127,"d":72},{"s":46,"n":"FX 1: Feedback","c":53,"mi":0,"ma":127,"d":0},{"s":46,"n":"FX 1: Stage Mix","c":54,"mi":0,"ma":127,"d":127},{"s":46,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":127},{"s":46,"n":"FX 2: LFO Speed","c":56,"mi":0,"ma":127,"d":32},{"s":46,"n":"FX 2: LFO Depth","c":57,"mi":0,"ma":127,"d":16},{"s":46,"n":"FX 2: LFO Shape","c":58,"mi":0,"ma":127,"d":64},{"s":46,"n":"FX 2: LFO Phase Offset","c":59,"mi":0,"ma":127,"d":64},{"s":46,"n":"FX 2: Cutoff Frequency","c":60,"mi":0,"ma":127,"d":72},{"s":46,"n":"FX 2: Feedback","c":61,"mi":0,"ma":127,"d":0},{"s":46,"n":"FX 2: Stage Mix","c":62,"mi":0,"ma":127,"d":127},{"s":46,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":127},{"s":47,"n":"FX 1: Pre Delay","c":48,"mi":0,"ma":127,"d":0},{"s":47,"n":"FX 1: Early Reflections","c":49,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 1: Damping","c":50,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 1: Size","c":51,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 1: Lowcut","c":52,"mi":0,"ma":127,"d":25},{"s":47,"n":"FX 1: Highcut","c":53,"mi":0,"ma":127,"d":76},{"s":47,"n":"FX 2: Pre Delay","c":56,"mi":0,"ma":127,"d":0},{"s":47,"n":"FX 2: Early Reflections","c":57,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 2: Damping","c":58,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 2: Size","c":59,"mi":0,"ma":127,"d":64},{"s":47,"n":"FX 2: Lowcut","c":60,"mi":0,"ma":127,"d":25},{"s":47,"n":"FX 2: Highcut","c":61,"mi":0,"ma":127,"d":76},{"s":48,"n":"FX 1: Delay Time","c":48,"mi":0,"ma":127},{"s":48,"n":"FX 1: Ping Pong","c":49,"mi":0,"ma":127,"d":0},{"s":48,"n":"FX 1: Stereo Width","c":50,"mi":0,"ma":127,"d":63,"ctr":1},{"s":48,"n":"FX 1: Feedback Gain","c":51,"mi":0,"ma":127,"d":78},{"s":48,"n":"FX 1: Feedback HPF","c":52,"mi":0,"ma":127,"d":0},{"s":48,"n":"FX 1: Feedback LPF","c":53,"mi":0,"ma":127,"d":127},{"s":48,"n":"FX 1: Mix","c":55,"mi":0,"ma":127},{"s":48,"n":"FX 2: Delay Time","c":56,"mi":0,"ma":127},{"s":48,"n":"FX 2: Ping Pong","c":57,"mi":0,"ma":127,"d":0},{"s":48,"n":"FX 2: Stereo Width","c":58,"mi":0,"ma":127,"d":63,"ctr":1},{"s":48,"n":"FX 2: Feedback Gain","c":59,"mi":0,"ma":127,"d":78},{"s":48,"n":"FX 2: Feedback HPF","c":60,"mi":0,"ma":127,"d":0},{"s":48,"n":"FX 2: Feedback LPF","c":61,"mi":0,"ma":127,"d":127},{"s":48,"n":"FX 2: Mix","c":63,"mi":0,"ma":127},{"s":49,"n":"FX 1: Pre Delay","c":48,"mi":0,"ma":127,"d":0},{"s":49,"n":"FX 1: Feedback","c":49,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 1: Brightness","c":50,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 1: Size","c":51,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 1: Low Cut","c":52,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 1: Diffuse","c":53,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 1: Width","c":54,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 1: Mix","c":55,"mi":0,"ma":127},{"s":49,"n":"FX 2: Pre Delay","c":56,"mi":0,"ma":127,"d":0},{"s":49,"n":"FX 2: Feedback","c":57,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 2: Brightness","c":58,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 2: Size","c":59,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 2: Low Cut","c":60,"mi":0,"ma":127,"d":32},{"s":49,"n":"FX 2: Diffuse","c":61,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 2: Width","c":62,"mi":0,"ma":127,"d":64},{"s":49,"n":"FX 2: Mix","c":63,"mi":0,"ma":127},{"s":50,"n":"FX 1: Pre Delay","c":48,"mi":0,"ma":127,"d":0},{"s":50,"n":"FX 1: Decay","c":49,"mi":0,"ma":127,"d":64},{"s":50,"n":"FX 1: Shelving Frequency","c":50,"mi":0,"ma":127,"d":63},{"s":50,"n":"FX 1: Shelving Gain","c":51,"mi":0,"ma":127,"d":63},{"s":50,"n":"FX 1: Highpass","c":52,"mi":0,"ma":127,"d":0},{"s":50,"n":"FX 1: Lowpass","c":53,"mi":0,"ma":127,"d":127},{"s":50,"n":"FX 1: Mix","c":55,"mi":0,"ma":127},{"s":50,"n":"FX 2: Pre Delay","c":56,"mi":0,"ma":127,"d":0},{"s":50,"n":"FX 2: Decay","c":57,"mi":0,"ma":127,"d":64},{"s":50,"n":"FX 2: Shelving Frequency","c":58,"mi":0,"ma":127,"d":63},{"s":50,"n":"FX 2: Shelving Gain","c":59,"mi":0,"ma":127,"d":63},{"s":50,"n":"FX 2: Highpass","c":60,"mi":0,"ma":127,"d":0},{"s":50,"n":"FX 2: Lowpass","c":61,"mi":0,"ma":127,"d":127},{"s":50,"n":"FX 2: Mix","c":63,"mi":0,"ma":127},{"s":51,"n":"FX 1: Speed","c":48,"mi":0,"ma":127,"d":25},{"s":51,"n":"FX 1: Depth","c":49,"mi":0,"ma":127,"d":50},{"s":51,"n":"FX 1: Base","c":50,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 1: Width","c":51,"mi":0,"ma":127,"d":127},{"s":51,"n":"FX 1: Noise Level","c":52,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 1: Noise High-Pass","c":53,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 1: Stereo Width","c":54,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 1: Mix","c":55,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 2: Speed","c":56,"mi":0,"ma":127,"d":25},{"s":51,"n":"FX 2: Depth","c":57,"mi":0,"ma":127,"d":50},{"s":51,"n":"FX 2: Base","c":58,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 2: Width","c":59,"mi":0,"ma":127,"d":127},{"s":51,"n":"FX 2: Noise Level","c":60,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 2: Noise High-Pass","c":61,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 2: Stereo Width","c":62,"mi":0,"ma":127,"d":0},{"s":51,"n":"FX 2: Mix","c":63,"mi":0,"ma":127,"d":0}]}</script>
+<script>
+"use strict";
+/* ===================================================================
+   SONGVERK · song mode externe pour Elektron Tonverk
+   24 PPQN · 6 ticks / step (1/16)
+   =================================================================== */
+const VERSION="0.5.1";   // à incrémenter en même temps que CACHE dans sw.js
+const PPQN=24, TPS=6, NTRACKS=16, RES=64;   // RES = quantification horizontale des courbes
+const BANKS="ABCDEFGH";
+const $=s=>document.querySelector(s);
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+
+/* ---------- stockage ---------- */
+const store={
+  async get(k){ try{ if(window.storage){const r=await window.storage.get(k);return r?r.value:null;} return localStorage.getItem(k);}catch(e){return null;} },
+  async set(k,v){ try{ if(window.storage){await window.storage.set(k,v);return;} localStorage.setItem(k,v);}catch(e){} },
+  async del(k){ try{ if(window.storage){await window.storage.delete(k);return;} localStorage.removeItem(k);}catch(e){} }
+};
+
+/* ---------- base de paramètres ---------- */
+let DB={sections:["Track"],params:[
+  {s:0,n:"Track: Global Mute",c:94,mi:0,ma:127},
+  {s:0,n:"Track: Level",c:95,mi:0,ma:127}
+]};
+const pName=p=>p.n;
+const pSec=p=>(DB.sections[p.s]||"");
+const pFull=p=>pSec(p)+" · "+p.n;   // les noms seuls sont ambigus (« FX 1: Decay »), la section tranche
+const pIsNrpn=p=>p.c===undefined;
+const pKey=p=>pIsNrpn(p)?("n"+p.m+"."+p.l):("c"+p.c);
+const pTag=p=>pIsNrpn(p)?("NRPN "+p.m+"/"+p.l):("CC "+p.c);
+function findParam(key){
+  const hit=DB.params.find(p=>pKey(p)===key);
+  if(hit) return hit;
+  // clé absente de la base : on reconstruit le paramètre depuis la clé plutôt que d'envoyer n'importe quoi
+  if(key&&key[0]==="c"){ const c=+key.slice(1); if(!isNaN(c)) return {s:0,n:"CC "+c,c,mi:0,ma:127}; }
+  if(key&&key[0]==="n"){ const [m,l]=key.slice(1).split(".").map(Number);
+    if(!isNaN(m)&&!isNaN(l)) return {s:0,n:"NRPN "+m+"/"+l,m,l,mi:0,ma:16383}; }
+  return DB.params[0];
+}
+
+async function loadDB(){
+  // base intégrée au fichier : aucun réseau, aucun fichier annexe
+  try{
+    const el=document.getElementById("paramdb");
+    const d=el&&JSON.parse(el.textContent);
+    if(d&&d.params&&d.params.length) DB=d;
+  }catch(e){}
+  // un CSV chargé par l'utilisateur prend le dessus
+  try{
+    const c=await store.get("sv:db");
+    if(c){ const d=JSON.parse(c); if(d&&d.params&&d.params.length) DB=d; }
+  }catch(e){}
+  dbState();
+}
+function dbState(){
+  const n=DB.params.length, cc=DB.params.filter(p=>!pIsNrpn(p)).length;
+  $("#dbState").textContent=`${n} paramètres Tonverk · ${cc} CC · ${n-cc} NRPN · ${DB.sections.length} sections.`;
+}
+
+/* ---------- modèle ---------- */
+function newLane(){
+  return { track:0, key:"c95", interp:"lin", res:3, on:true,
+           pts:[{x:0,y:0.5},{x:1,y:0.5}] };
+}
+function newRow(){
+  return { id:Math.random().toString(36).slice(2,9), bank:0, slot:0, len:16, rep:1, bpm:130,
+           label:"", mutes:Array(NTRACKS).fill(false),
+           jump:{mode:"none",target:0,n:2}, lanes:[] };
+}
+function newSong(name){ return { id:Math.random().toString(36).slice(2,9), name:name||"untitled",
+  end:"loop", updatedAt:Date.now(), rows:[newRow()] }; }
+let proj={ songs:[newSong("song 1")], cur:0 };
+const song=()=>proj.songs[proj.cur];
+let cfg={ clock:"master", pcCh:1, lead:150, ccOff:0, ccRes:3, autoLead:true,
+          trackCh:Array.from({length:NTRACKS},(_,i)=>i+1), outId:null, inId:null };
+
+/* ---------- MIDI ---------- */
+let midi=null,out=null,inp=null;
+async function initMidi(){
+  if(!navigator.requestMIDIAccess){ $("#midiPill").textContent="pas de web midi"; return; }
+  try{
+    midi=await navigator.requestMIDIAccess({sysex:false});
+    midi.onstatechange=()=>{fillPorts();bindPorts();};
+    fillPorts(); bindPorts();
+  }catch(e){ $("#midiPill").textContent="midi refusé"; }
+}
+function fillPorts(){
+  const os=$("#outSel"), is=$("#inSel"); os.innerHTML=""; is.innerHTML="";
+  os.appendChild(new Option("— aucune —",""));
+  is.appendChild(new Option("— aucune —",""));
+  for(const p of midi.outputs.values()) os.appendChild(new Option(p.name,p.id));
+  for(const p of midi.inputs.values())  is.appendChild(new Option(p.name,p.id));
+  if(cfg.outId) os.value=cfg.outId;
+  if(cfg.inId)  is.value=cfg.inId;
+}
+function bindPorts(){
+  out=$("#outSel").value?midi.outputs.get($("#outSel").value):null;
+  if(inp) inp.onmidimessage=null;
+  inp=$("#inSel").value?midi.inputs.get($("#inSel").value):null;
+  if(inp) inp.onmidimessage=onMidiIn;
+  cfg.outId=out?out.id:null; cfg.inId=inp?inp.id:null;
+  const p=$("#midiPill");
+  p.textContent=out?out.name:"pas de sortie";
+  p.classList.toggle("on",!!out);
+  p.classList.toggle("err",!out);
+  save();
+}
+const send=(b,t)=>{ if(out) out.send(b,t); };
+function sendCC(ch,cc,v,t){ send([0xB0|(ch-1),cc&127,clamp(v,0,127)],t); }
+function sendNRPN(ch,msb,lsb,v,t){
+  const s=0xB0|(ch-1), val=clamp(v,0,16383);
+  send([s,99,msb&127],t); send([s,98,lsb&127],t);
+  send([s,6,(val>>7)&127],t); send([s,38,val&127],t);
+}
+
+/* ---------- courbes ---------- */
+function curveAt(l,x){
+  const p=l.pts; if(!p.length) return 0;
+  if(x<=p[0].x) return p[0].y;
+  const last=p[p.length-1]; if(x>=last.x) return last.y;
+  let i=0; while(i<p.length-1 && p[i+1].x<x) i++;
+  const a=p[i],b=p[i+1];
+  if(l.interp==="hold") return a.y;
+  let t=(x-a.x)/((b.x-a.x)||1);
+  if(l.interp==="smooth") t=t*t*(3-2*t);
+  return a.y+(b.y-a.y)*t;
+}
+function laneValue(l,x){
+  const p=findParam(l.key);
+  const mi=p.mi??0, ma=p.ma??(pIsNrpn(p)?16383:127);
+  return Math.round(mi+(ma-mi)*clamp(curveAt(l,x),0,1));
+}
+function penPoint(l,x,y){
+  const q=Math.round(clamp(x,0,1)*RES)/RES;
+  y=clamp(y,0,1);
+  const i=l.pts.findIndex(pt=>Math.abs(pt.x-q)<1e-9);
+  if(i>=0) l.pts[i].y=y; else { l.pts.push({x:q,y}); l.pts.sort((a,b)=>a.x-b.x); }
+}
+function eraseRange(l,x0,x1){
+  const a=Math.min(x0,x1)-1e-9, b=Math.max(x0,x1)+1e-9;
+  l.pts=l.pts.filter(p=>p.x<a||p.x>b);
+}
+
+/* ---------- moteur ---------- */
+/* mesures de timing, alimentées par ce que la machine renvoie */
+const meas={ jitter:0, roundTrip:null, lastErr:null, ok:0, late:0, echoes:0, pending:null };
+const eng={ running:false,rowIdx:0,pass:1,tickInRow:0,absTick:0,nextTickTime:0,
+  pcArmed:false,queued:null,holdRelease:false,lastMutes:null,lastVal:[],
+  estTick:60000/(130*PPQN), lastInTick:0,
+  /* le scheduler travaille jusqu'à 160 ms en avance : sans cette piste horodatée,
+     le playhead affiche le futur. On rejoue les ticks à leur heure réelle. */
+  tl:[] };
+function stamp(t,dur){
+  const r=song().rows[eng.rowIdx];
+  eng.tl.push({t,dur,row:eng.rowIdx,pass:eng.pass,tick:eng.tickInRow,total:rowTicks(r)});
+  if(eng.tl.length>512) eng.tl.splice(0,256);
+}
+/* position audible interpolée entre deux ticks */
+function playPos(){
+  const now=performance.now(), a=eng.tl;
+  if(!a.length) return null;
+  let i=a.length-1;
+  while(i>0 && a[i].t>now) i--;
+  if(a[i].t>now) return null;
+  if(i>32) a.splice(0,i-16), i=16;
+  const e=a[i];
+  const frac=e.dur>0?clamp((now-e.t)/e.dur,0,1):0;
+  return {row:e.row,pass:e.pass,phase:clamp((e.tick+frac)/e.total,0,1),
+          beat:((e.tick+frac)%PPQN)/PPQN, tick:e.tick+frac, total:e.total};
+}
+let timerId=null;
+const LOOKAHEAD=160, TIMER=20;
+const rowTicks=r=>r.len*TPS*Math.max(1,r.rep);
+const patPC=r=>clamp(r.bank*16+r.slot,0,127);
+
+function nextRowIndex(){
+  const rows=song().rows, r=rows[eng.rowIdx];
+  if(eng.queued!==null){ const q=eng.queued; eng.queued=null; return q; }
+  const j=r.jump;
+  if(j.mode==="goto")   return clamp(j.target,0,rows.length-1);
+  if(j.mode==="hold")   return eng.holdRelease?clamp(eng.rowIdx+1,0,rows.length-1):eng.rowIdx;
+  if(j.mode==="afterN") return eng.pass>=j.n?clamp(j.target,0,rows.length-1):eng.rowIdx;
+  if(eng.rowIdx+1<rows.length) return eng.rowIdx+1;
+  return song().end==="loop"?0:-1;
+}
+function applyRow(idx,t){
+  const r=song().rows[idx];
+  for(let i=0;i<NTRACKS;i++){
+    const m=!!r.mutes[i];
+    if(!eng.lastMutes||eng.lastMutes[i]!==m) sendCC(cfg.trackCh[i],94,m?127:0,t);
+  }
+  eng.lastMutes=r.mutes.slice();
+  eng.lastVal=r.lanes.map(()=>null);
+}
+function sendPC(idx,t,boundary){
+  const pgm=patPC(song().rows[idx]);
+  send([0xC0|(cfg.pcCh-1),pgm],t);
+  if(boundary!==undefined) meas.pending={pgm,sent:t,boundary};
+}
+
+function laneSend(r,phase,t){
+  r.lanes.forEach((l,i)=>{
+    if(!l.on) return;
+    const every=Math.max(1,l.res||cfg.ccRes);
+    if(eng.tickInRow%every!==0) return;
+    const v=laneValue(l,phase);
+    if(v===eng.lastVal[i]) return;
+    eng.lastVal[i]=v;
+    const p=findParam(l.key), ch=cfg.trackCh[l.track], tt=t+cfg.ccOff;
+    if(pIsNrpn(p)) sendNRPN(ch,p.m,p.l,v,tt); else sendCC(ch,p.c,v,tt);
+  });
+}
+
+function tick(t,sendClock){
+  const rows=song().rows;
+  if(eng.rowIdx>=rows.length) eng.rowIdx=0;
+  const r=rows[eng.rowIdx];
+  if(!r){ stop(); return; }
+  const total=rowTicks(r);
+  if(eng.tickInRow===0) applyRow(eng.rowIdx,t);
+  if(sendClock) send([0xF8],t);
+  laneSend(r,eng.tickInRow/total,t);
+
+  const remain=total-eng.tickInRow;
+  const dur=cfg.clock==="master"?60000/(r.bpm*PPQN):eng.estTick;
+  if(!eng.pcArmed && remain*dur<=cfg.lead){
+    const nx=nextRowIndex();
+    if(nx>=0&&nx!==eng.rowIdx) sendPC(nx,t,t+remain*dur);
+    eng.pcArmed=true;
+  }
+  eng.tickInRow++; eng.absTick++;
+  if(eng.tickInRow>=total){
+    const nx=nextRowIndex();
+    eng.pcArmed=false; eng.holdRelease=false;
+    if(nx<0){ stop(); return; }
+    eng.pass=(nx===eng.rowIdx)?eng.pass+1:1;
+    eng.rowIdx=nx; eng.tickInRow=0;
+  }
+}
+function scheduler(){
+  const now=performance.now();
+  while(eng.running && cfg.clock==="master" && eng.nextTickTime<now+LOOKAHEAD){
+    const r=song().rows[eng.rowIdx];
+    const dur=60000/(r.bpm*PPQN);
+    stamp(eng.nextTickTime,dur);
+    tick(eng.nextTickTime,true);
+    eng.nextTickTime+=dur;
+  }
+}
+function onMidiIn(e){
+  const s=e.data[0];
+  if(s===0xF8){
+    if(eng.lastInTick){ const d=e.timeStamp-eng.lastInTick; if(d>2&&d<200) eng.estTick=eng.estTick*.85+d*.15; }
+    eng.lastInTick=e.timeStamp;
+    if(eng.running&&cfg.clock==="slave"){ stamp(e.timeStamp,eng.estTick); tick(e.timeStamp,false); }
+  } else if((s&0xF0)===0xC0){
+    onPcEcho(e.data[1],e.timeStamp);
+  } else if((s===0xFA||s===0xFB)&&cfg.clock==="slave"){
+    if(s===0xFA) resetPos(0);
+    eng.running=true; uiTransport();
+  } else if(s===0xFC&&cfg.clock==="slave"){ eng.running=false; uiTransport(); }
+}
+/* La machine émet un Program Change au début de chaque nouveau pattern.
+   Deux échos possibles :
+   - juste après notre envoi  -> c'est un renvoi thru, il donne l'aller-retour
+   - autour de la frontière   -> c'est la confirmation du changement, il donne l'écart réel */
+function onPcEcho(pgm,ts){
+  const p=meas.pending;
+  if(!p) return;
+  meas.echoes++;
+  const dSent=ts-p.sent, err=ts-p.boundary;
+  const patDur=rowTicks(song().rows[eng.rowIdx])*eng.estTick;
+  const tol=Math.max(120,eng.estTick*6);       // une croche de tolérance autour de la frontière
+  if(Math.abs(err)<=tol){                      // confirmation : le changement a eu lieu où il devait
+    meas.lastErr=err; meas.ok++; meas.late=0; meas.pending=null;
+    // on redescend doucement pour ne pas anticiper plus que nécessaire
+    if(cfg.autoLead&&meas.ok>=8&&cfg.lead>minLead()){
+      meas.ok=0; setLead(Math.max(minLead(),cfg.lead-15),"marge réduite");
+    }
+  } else if(dSent>=-5&&dSent<80){              // renvoi thru : ne dit rien sur la frontière,
+    meas.roundTrip=meas.roundTrip===null?dSent:meas.roundTrip*.7+dSent*.3;  // mais donne l'aller-retour
+    return;
+  } else if(err>patDur*0.5){                   // changement arrivé une pattern trop tard
+    meas.lastErr=err; meas.late++; meas.ok=0; meas.pending=null;
+    if(cfg.autoLead) setLead(Math.min(600,cfg.lead+60),"trop tard");
+  } else return;
+  measUI();
+}
+/* plancher de sécurité : trois écarts de gigue plus la moitié d'un tick, jamais sous 40 ms */
+function minLead(){ return Math.max(40,Math.round(meas.jitter*3+eng.estTick/2+20)); }
+function setLead(v,why){
+  if(v===cfg.lead) return;
+  cfg.lead=v; save();
+  if(leadDraw) leadDraw();
+  flash("lead "+v+" ms · "+why);
+}
+function measUI(){
+  const el=$("#measBox"); if(!el) return;
+  const f=n=>n===null?"—":Math.round(n)+" ms";
+  el.innerHTML=`<b>${cfg.lead} ms</b> de lead · gigue ${f(meas.jitter)} · plancher ${minLead()} ms<br>`+
+    `aller-retour ${f(meas.roundTrip)} · dernier écart ${f(meas.lastErr)} · `+
+    (meas.echoes?`${meas.echoes} retours reçus`:`aucun retour : active PROGRAM CHANGE SEND sur la machine`);
+}
+function resetPos(i){ eng.rowIdx=i; eng.pass=1; eng.tickInRow=0; eng.absTick=0; eng.tl.length=0;
+  eng.pcArmed=false; eng.queued=null; eng.holdRelease=false; eng.lastMutes=null; }
+function play(from){
+  if(!out){ flash("choisis une sortie midi"); return; }
+  resetPos(from||0);
+  const t0=performance.now()+60;
+  sendPC(eng.rowIdx,t0);
+  meas.pending=null;
+  if(cfg.clock==="master"){
+    eng.nextTickTime=t0+cfg.lead;
+    send([0xFA],eng.nextTickTime);
+    eng.running=true;
+    timerId=setInterval(scheduler,TIMER);
+    scheduler();
+  } else { eng.running=true; flash("en attente du clock"); }
+  uiTransport();
+}
+function stop(){
+  eng.running=false;
+  if(timerId){clearInterval(timerId);timerId=null;}
+  if(cfg.clock==="master") send([0xFC]);
+  uiTransport();
+}
+
+/* ---------- liste des rows ---------- */
+const list=$("#list");
+let rowEls=new Map();
+function render(){
+  list.innerHTML=""; rowEls.clear();
+  $("#songPill").textContent=song().name;
+  const rows=song().rows;
+  if(!rows.length){ list.innerHTML='<p class="empty-state">Aucune row.<br>Ajoute une row pour commencer la song.</p>'; return; }
+  rows.forEach((r,i)=>{
+    const el=document.createElement("div");
+    el.className="row";
+    const bars=r.len/16*r.rep;
+    const c=[];
+    if(r.jump.mode==="goto")   c.push(`<i class="hot">→${r.jump.target+1}</i>`);
+    if(r.jump.mode==="afterN") c.push(`<i class="hot">${r.jump.n}×→${r.jump.target+1}</i>`);
+    if(r.jump.mode==="hold")   c.push(`<i class="ok">hold</i>`);
+    if(r.lanes.length)         c.push(`<i class="hot">${r.lanes.length} auto</i>`);
+    c.push(`<i>${r.len}st${r.rep>1?" ×"+r.rep:""}</i>`,`<i>${bars%1?bars.toFixed(2):bars} bar</i>`);
+    if(cfg.clock==="master") c.push(`<i>${r.bpm.toFixed(1)}</i>`);
+    el.innerHTML=`<div class="fill"></div><i class="head"></i><i class="edge"></i>
+      <div class="rowbody">
+        <div class="pat">${BANKS[r.bank]}${String(r.slot+1).padStart(2,"0")}</div>
+        <div class="meta">
+          <div class="name ${r.label?"":"empty"}"></div>
+          <div class="chips">${c.join(" · ")}</div>
+        </div>
+        <div class="mutedots">${r.mutes.map(m=>`<i class="md ${m?"off":""}"></i>`).join("")}</div>
+      </div><button class="grab">✎</button>`;
+    el.querySelector(".name").textContent=r.label||"sans nom";
+    el.querySelector(".grab").onclick=e=>{e.stopPropagation();openRow(i);};
+    el.onclick=()=>{ if(eng.running){eng.queued=i;paint();} else play(i); };
+    el.style.animationDelay=(Math.min(i,8)*18)+"ms";
+    list.appendChild(el); rowEls.set(i,el);
+  });
+  paint();
+}
+function paint(){ rowEls.forEach((el,i)=>{
+  if(!eng.running) el.classList.remove("cur");
+  el.classList.toggle("queued",eng.queued===i); }); }
+
+let lastCur=-1;
+function frame(){
+  const p=eng.running?playPos():null;
+  if(p){
+    if(p.row!==lastCur){ lastCur=p.row; paintCur(p.row); }
+    rowEls.forEach((el,i)=>{
+      const f=el.querySelector(".fill"), h=el.querySelector(".head"), e=el.querySelector(".edge");
+      if(i===p.row){
+        f.style.transform=`scaleX(${p.phase.toFixed(5)})`;
+        h.style.transform=`translateX(${(p.phase*el.clientWidth).toFixed(2)}px)`;
+        // l'arête s'allume net sur le temps puis retombe : le tempo se lit sans chiffre
+        e.style.opacity=(Math.pow(1-p.beat,3)*.9).toFixed(3);
+      } else { f.style.transform="scaleX(0)"; e.style.opacity=0; }
+    });
+    $("#nowRow").textContent=`${p.row+1}.${p.pass}`;
+    const beat=Math.floor(p.tick/PPQN);
+    $("#nowBar").textContent=`${Math.floor(beat/4)+1}.${beat%4+1}`;
+    const r=song().rows[p.row];
+    if(r) $("#nowBpm").textContent=(cfg.clock==="master"?r.bpm:60000/(eng.estTick*PPQN)).toFixed(1);
+    if(curveOpen) drawCurve(p.row===editIdx?p.phase:undefined);
+  }
+  requestAnimationFrame(frame);
+}
+function paintCur(i){
+  rowEls.forEach((el,k)=>el.classList.toggle("cur",k===i));
+}
+requestAnimationFrame(frame);
+
+function uiTransport(){
+  const b=$("#playBtn"), lab=eng.running?"STOP":"PLAY";
+  if(b.querySelector("span").textContent!==lab){
+    b.classList.add("swap");
+    setTimeout(()=>{ b.querySelector("span").textContent=lab; b.classList.remove("swap"); },120);
+  }
+  b.classList.toggle("stop",eng.running);
+  document.querySelector("header").classList.toggle("running",eng.running);
+  if(!eng.running){
+    lastCur=-1; $("#nowRow").textContent="—";
+    rowEls.forEach(e=>{ e.querySelector(".fill").style.transform="scaleX(0)";
+      e.querySelector(".edge").style.opacity=0; });
+  }
+  paint();
+}
+let flashT=null;
+function flash(m){ const p=$("#midiPill"),o=p.dataset.o||p.textContent;
+  p.dataset.o=o; p.textContent=m; clearTimeout(flashT);
+  flashT=setTimeout(()=>{p.textContent=p.dataset.o;delete p.dataset.o;},1800); }
+
+/* ---------- steppers ---------- */
+function stepper(host,get,set,min,max,inc,fmt){
+  host.innerHTML="";
+  const w=document.createElement("div"); w.className="step";
+  const dn=document.createElement("button"); dn.textContent="−";
+  const num=document.createElement("div"); num.className="num";
+  const up=document.createElement("button"); up.textContent="+";
+  const draw=()=>num.textContent=(fmt||String)(get());
+  const bump=d=>{ set(clamp(get()+d*inc,min,max)); draw(); };
+  dn.onclick=()=>bump(-1); up.onclick=()=>bump(1);
+  let x0=0,v0=0,drag=false;
+  num.addEventListener("pointerdown",e=>{drag=true;x0=e.clientX;v0=get();num.setPointerCapture(e.pointerId);});
+  num.addEventListener("pointermove",e=>{ if(!drag)return;
+    set(clamp(v0+Math.round((e.clientX-x0)/8)*inc,min,max)); draw(); });
+  num.addEventListener("pointerup",()=>drag=false);
+  num.addEventListener("pointercancel",()=>drag=false);
+  w.append(dn,num,up); host.appendChild(w); draw(); return draw;
+}
+
+/* ---------- sheets ---------- */
+function open(id){
+  const el=$(id);
+  el.querySelectorAll(".field,.lane,.songrow").forEach((n,i)=>n.style.setProperty("--i",Math.min(i,6)));
+  el.classList.remove("closing"); el.classList.add("open");
+  el.scrollTop=0; const in_=el.querySelector(".sheet-in"); if(in_) in_.scrollTop=0;
+}
+function close(id){
+  const el=typeof id==="string"?$(id):id;
+  if(!el.classList.contains("open")) return;
+  el.classList.add("closing");
+  setTimeout(()=>{ el.classList.remove("open","closing"); },180);
+}
+function dismiss(sheet){
+  close(sheet);
+  if(sheet.id==="curveSheet"){ curveOpen=false; setTimeout(()=>openRow(editIdx),120); }
+}
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>dismiss(b.closest(".sheet")));
+document.querySelectorAll(".sheet").forEach(s=>s.addEventListener("click",e=>{
+  if(e.target===s) dismiss(s);
+}));
+
+/* ---------- éditeur de row ---------- */
+let editIdx=0;
+function openRow(i){
+  editIdx=i;
+  const r=song().rows[i];
+  if(!r) return;
+  $("#rowTitle").textContent=`Row ${i+1}`;
+  stepper($("#patCtl"),()=>r.bank*16+r.slot,v=>{r.bank=Math.floor(v/16);r.slot=v%16;render();save();},
+    0,127,1,v=>BANKS[Math.floor(v/16)]+String(v%16+1).padStart(2,"0"));
+  stepper($("#lenCtl"),()=>r.len,v=>{r.len=v;render();save();},1,1024,1,v=>v+" st");
+  stepper($("#repCtl"),()=>r.rep,v=>{r.rep=v;render();save();},1,99,1);
+  stepper($("#bpmCtl"),()=>r.bpm,v=>{r.bpm=Math.round(v*10)/10;render();save();},30,300,.5,v=>v.toFixed(1));
+  $("#labelIn").value=r.label;
+  $("#labelIn").oninput=e=>{r.label=e.target.value;render();save();};
+
+  const mg=$("#muteGrid"); mg.innerHTML="";
+  for(let t=0;t<NTRACKS;t++){
+    const b=document.createElement("button");
+    b.className="mbtn"+(r.mutes[t]?"":" on"); b.textContent=t+1;
+    b.onclick=()=>{r.mutes[t]=!r.mutes[t];b.classList.toggle("on",!r.mutes[t]);render();save();};
+    mg.appendChild(b);
+  }
+  const jt=$("#jumpTarget"); jt.innerHTML="";
+  song().rows.forEach((rr,k)=>jt.appendChild(new Option(`${k+1} · ${rr.label||BANKS[rr.bank]+String(rr.slot+1).padStart(2,"0")}`,k)));
+  jt.value=r.jump.target;
+  jt.onchange=e=>{r.jump.target=+e.target.value;render();save();};
+  $("#jumpMode").value=r.jump.mode;
+  $("#jumpMode").onchange=e=>{r.jump.mode=e.target.value;jumpUI(r);render();save();};
+  stepper($("#jumpNCtl"),()=>r.jump.n,v=>{r.jump.n=v;render();save();},1,99,1);
+  jumpUI(r);
+  renderLanes(r);
+  $("#upRow").onclick=()=>moveRow(i,-1);
+  $("#dnRow").onclick=()=>moveRow(i,1);
+  $("#dupRow").onclick=()=>{ const c=JSON.parse(JSON.stringify(r)); c.id=Math.random().toString(36).slice(2,9);
+    song().rows.splice(i+1,0,c); render(); save(); openRow(i+1); };
+  $("#delRow").onclick=()=>{ if(song().rows.length<2) return;
+    song().rows.splice(i,1); close("#rowSheet"); render(); save(); };
+  open("#rowSheet");
+}
+function jumpUI(r){
+  $("#jumpTargetField").style.display=(r.jump.mode==="goto"||r.jump.mode==="afterN")?"":"none";
+  $("#jumpNField").style.display=r.jump.mode==="afterN"?"":"none";
+}
+function moveRow(i,d){
+  const rows=song().rows, j=i+d;
+  if(j<0||j>=rows.length) return;
+  [rows[i],rows[j]]=[rows[j],rows[i]];
+  render(); save(); openRow(j);
+}
+
+/* ---------- lanes (aperçu) ---------- */
+function renderLanes(r){
+  const host=$("#lanes"); host.innerHTML="";
+  $("#laneCount").textContent=r.lanes.length?r.lanes.length+" lane"+(r.lanes.length>1?"s":""):"";
+  r.lanes.forEach((l,i)=>{
+    const p=findParam(l.key);
+    const d=document.createElement("div"); d.className="lane";
+    const top=document.createElement("div"); top.className="lane-top";
+    const dot=document.createElement("button"); dot.className="dot"+(l.on?"":" off");
+    dot.onclick=e=>{e.stopPropagation();l.on=!l.on;dot.className="dot"+(l.on?"":" off");save();};
+    const nm=document.createElement("div"); nm.className="lane-name";
+    nm.innerHTML=`<span></span><small></small>`;
+    nm.firstChild.textContent=pName(p);
+    nm.lastChild.textContent=`${pSec(p)} · TR${l.track+1} · ${pTag(p)}`;
+    const tag=document.createElement("span");
+    tag.className="tag"+(pIsNrpn(p)?" nrpn":""); tag.textContent=pIsNrpn(p)?"14 bit":"7 bit";
+    top.append(dot,nm,tag);
+    const cv=document.createElement("canvas"); cv.className="mini";
+    d.append(top,cv);
+    d.onclick=()=>openCurve(i);
+    host.appendChild(d);
+    miniDraw(cv,l);
+  });
+}
+function miniDraw(cv,l){
+  const dpr=devicePixelRatio||1, w=cv.clientWidth||300, h=44;
+  cv.width=w*dpr; cv.height=h*dpr;
+  const g=cv.getContext("2d"); g.scale(dpr,dpr);
+  g.fillStyle="#131315"; g.fillRect(0,0,w,h);
+  g.strokeStyle="#ff9436"; g.lineWidth=1.5; g.beginPath();
+  for(let i=0;i<=w;i+=2){ const y=h-4-curveAt(l,i/w)*(h-8); i?g.lineTo(i,y):g.moveTo(i,y); }
+  g.stroke();
+}
+
+/* ---------- éditeur de courbe ---------- */
+let curveOpen=false, laneIdx=0, tool="pen", snap=false;
+const cv=$("#curve"), gtx=cv.getContext("2d");
+function curLane(){ return song().rows[editIdx].lanes[laneIdx]; }
+
+function openCurve(i){
+  laneIdx=i; curveOpen=true;
+  const l=curLane(), p=findParam(l.key), r=song().rows[editIdx];
+  $("#curveTitle").textContent=pName(p);
+  $("#curveSub").textContent=`${pSec(p)} · row ${editIdx+1} · ${r.len} steps`;
+  $("#laneParam").textContent=pFull(p);
+  const ts=$("#laneTrack"); ts.innerHTML="";
+  for(let t=0;t<NTRACKS;t++) ts.appendChild(new Option("TR"+(t+1)+"  (ch "+cfg.trackCh[t]+")",t));
+  ts.value=l.track; ts.onchange=e=>{l.track=+e.target.value;save();};
+  stepper($("#laneResCtl"),()=>l.res,v=>{l.res=v;save();},1,24,1,v=>v+" tick"+(v>1?"s":""));
+  stepper($("#cyclesCtl"),()=>cycles,v=>{cycles=v;},1,32,1);
+  $("#interpBtn").textContent=l.interp;
+  document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on",b.dataset.tool===tool));
+  $("#snapBtn").classList.toggle("on",snap);
+  const mi=p.mi??0, ma=p.ma??(pIsNrpn(p)?16383:127);
+  $("#curveHint").textContent=`Plage ${mi}–${ma}. Envoi tous les ${l.res} ticks, uniquement quand la valeur change.`+
+    (pIsNrpn(p)?" NRPN = 4 messages par valeur, garde une résolution large si tu empiles les lanes.":"");
+  open("#curveSheet"); requestAnimationFrame(()=>drawCurve());
+}
+
+function sizeCanvas(){
+  const dpr=devicePixelRatio||1;
+  cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
+  gtx.setTransform(dpr,0,0,dpr,0,0);
+}
+function drawCurve(playPhase){
+  if(!curveOpen) return;
+  const l=curLane(); if(!l) return;
+  if(cv.width!==Math.round(cv.clientWidth*(devicePixelRatio||1))) sizeCanvas();
+  const w=cv.clientWidth,h=cv.clientHeight,pad=6;
+  const X=x=>pad+x*(w-2*pad), Y=y=>h-pad-y*(h-2*pad);
+  const r=song().rows[editIdx];
+  gtx.clearRect(0,0,w,h);
+  gtx.fillStyle="#0e0e10"; gtx.fillRect(0,0,w,h);
+  // grille : steps et barres
+  const steps=r.len;
+  gtx.lineWidth=1;
+  for(let s=0;s<=steps;s++){
+    const isBar=s%16===0, isBeat=s%4===0;
+    if(!isBeat && steps>32) continue;
+    gtx.strokeStyle=isBar?"#33333a":(isBeat?"#24242a":"#1a1a1e");
+    gtx.beginPath(); gtx.moveTo(X(s/steps),pad); gtx.lineTo(X(s/steps),h-pad); gtx.stroke();
+  }
+  gtx.strokeStyle="#1a1a1e";
+  for(let k=1;k<4;k++){ gtx.beginPath(); gtx.moveTo(pad,Y(k/4)); gtx.lineTo(w-pad,Y(k/4)); gtx.stroke(); }
+  // courbe
+  gtx.strokeStyle="#ff9436"; gtx.lineWidth=2; gtx.beginPath();
+  for(let i=0;i<=w;i+=1){ const x=(i-pad)/(w-2*pad); const y=Y(curveAt(l,clamp(x,0,1)));
+    i?gtx.lineTo(i,y):gtx.moveTo(i,y); }
+  gtx.stroke();
+  gtx.fillStyle="rgba(255,148,54,.07)";
+  gtx.lineTo(w,h); gtx.lineTo(0,h); gtx.closePath(); gtx.fill();
+  // points
+  gtx.fillStyle="#ffd489";
+  l.pts.forEach(p=>{ gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),3,0,7); gtx.fill(); });
+  // playhead : ligne + pastille sur la valeur envoyée à cet instant
+  if(playPhase!==undefined){
+    const px=X(playPhase), py=Y(curveAt(l,playPhase));
+    gtx.strokeStyle="rgba(255,148,54,.5)"; gtx.lineWidth=1.5;
+    gtx.beginPath(); gtx.moveTo(px,pad); gtx.lineTo(px,h-pad); gtx.stroke();
+    gtx.fillStyle="#ff9436"; gtx.shadowColor="rgba(255,148,54,.85)"; gtx.shadowBlur=12;
+    gtx.beginPath(); gtx.arc(px,py,4.5,0,7); gtx.fill(); gtx.shadowBlur=0;
+    $("#roRight").innerHTML=`valeur <b>${laneValue(l,playPhase)}</b>`;
+  }
+}
+function evPos(e){
+  const b=cv.getBoundingClientRect(), pad=6;
+  let x=(e.clientX-b.left-pad)/(b.width-2*pad);
+  let y=1-(e.clientY-b.top-pad)/(b.height-2*pad);
+  if(snap) y=Math.round(y*8)/8;
+  return {x:clamp(x,0,1),y:clamp(y,0,1)};
+}
+let drawing=false, lastP=null, anchor=null;
+cv.addEventListener("pointerdown",e=>{
+  const l=curLane(); if(!l) return;
+  cv.setPointerCapture(e.pointerId); drawing=true;
+  const p=evPos(e);
+  if(tool==="pen"){ penPoint(l,p.x,p.y); lastP=p; }
+  else if(tool==="line"){ anchor=p; }
+  else { // points : ajouter ou retirer
+    const near=l.pts.find(q=>Math.abs(q.x-p.x)<0.03);
+    if(near&&e.shiftKey) eraseRange(l,near.x,near.x); else penPoint(l,p.x,p.y);
+  }
+  updateReadout(p); drawCurve();
+});
+cv.addEventListener("pointermove",e=>{
+  const l=curLane(); if(!l) return;
+  const p=evPos(e);
+  updateReadout(p);
+  if(!drawing) return;
+  if(tool==="pen"){
+    if(lastP){ const n=Math.max(1,Math.round(Math.abs(p.x-lastP.x)*RES));
+      for(let k=1;k<=n;k++){ const t=k/n;
+        penPoint(l,lastP.x+(p.x-lastP.x)*t,lastP.y+(p.y-lastP.y)*t); } }
+    else penPoint(l,p.x,p.y);
+    lastP=p;
+  } else if(tool==="line"&&anchor){
+    eraseRange(l,anchor.x,p.x);
+    penPoint(l,anchor.x,anchor.y); penPoint(l,p.x,p.y);
+  } else if(tool==="point"){ penPoint(l,p.x,p.y); }
+  drawCurve();
+});
+const endDraw=()=>{ if(drawing){ drawing=false; lastP=null; anchor=null; save(); } };
+cv.addEventListener("pointerup",endDraw);
+cv.addEventListener("pointercancel",endDraw);
+
+function updateReadout(p){
+  const l=curLane(); if(!l) return;
+  const par=findParam(l.key), r=song().rows[editIdx];
+  const step=Math.floor(p.x*r.len)+1;
+  $("#roLeft").innerHTML=`step <b>${clamp(step,1,r.len)}</b> / ${r.len}`;
+  $("#roRight").innerHTML=`valeur <b>${laneValue(l,p.x)}</b>`;
+}
+
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>{
+  tool=b.dataset.tool;
+  document.querySelectorAll("[data-tool]").forEach(o=>o.classList.toggle("on",o===b));
+});
+$("#snapBtn").onclick=()=>{ snap=!snap; $("#snapBtn").classList.toggle("on",snap); };
+$("#interpBtn").onclick=()=>{
+  const l=curLane(); const modes=["lin","smooth","hold"];
+  l.interp=modes[(modes.indexOf(l.interp)+1)%3];
+  $("#interpBtn").textContent=l.interp; drawCurve(); save();
+};
+let cycles=1;
+document.querySelectorAll("[data-shape]").forEach(b=>b.onclick=()=>{
+  const l=curLane(); if(!l) return;
+  const s=b.dataset.shape, N=RES, pts=[];
+  const push=(x,y)=>pts.push({x:Math.round(x*N)/N,y:clamp(y,0,1)});
+  if(s==="up"){ push(0,0); push(1,1); }
+  else if(s==="down"){ push(0,1); push(1,0); }
+  else if(s==="tri"){ for(let i=0;i<=cycles*2;i++) push(i/(cycles*2),i%2?1:0); }
+  else if(s==="sine"){ for(let i=0;i<=N;i++) push(i/N,.5+.5*Math.sin(2*Math.PI*cycles*i/N-Math.PI/2)); }
+  else if(s==="steps"){ const n=cycles*4; for(let i=0;i<n;i++){ const y=i/(n-1); push(i/n,y); push((i+1)/n-1/N,y); } l.interp="hold"; $("#interpBtn").textContent="hold"; }
+  else if(s==="rand"){ const n=cycles*4; for(let i=0;i<=n;i++) push(i/n,Math.random()); }
+  else if(s==="rev"){ l.pts=l.pts.map(p=>({x:Math.round((1-p.x)*N)/N,y:p.y})).sort((a,b)=>a.x-b.x); drawCurve(); save(); return; }
+  else if(s==="flip"){ l.pts=l.pts.map(p=>({x:p.x,y:1-p.y})); drawCurve(); save(); return; }
+  l.pts=pts; drawCurve(); save();
+});
+$("#clearCurve").onclick=()=>{ const l=curLane(); l.pts=[{x:0,y:.5},{x:1,y:.5}]; drawCurve(); save(); };
+$("#delLane").onclick=()=>{ song().rows[editIdx].lanes.splice(laneIdx,1);
+  curveOpen=false; close("#curveSheet"); setTimeout(()=>openRow(editIdx),120); render(); save(); };
+$("#addLane").onclick=()=>{ const r=song().rows[editIdx]; r.lanes.push(newLane());
+  renderLanes(r); render(); save(); openCurve(r.lanes.length-1); };
+
+/* ---------- sélecteur de paramètre ---------- */
+$("#laneParam").onclick=()=>{ $("#pickSearch").value=""; fillPick(""); open("#pickSheet"); };
+$("#pickSearch").oninput=e=>fillPick(e.target.value);
+function fillPick(q){
+  const host=$("#pickList"); host.innerHTML="";
+  const s=q.trim().toLowerCase();
+  const res=DB.params.filter(p=>!s||pName(p).toLowerCase().includes(s)||DB.sections[p.s].toLowerCase().includes(s)).slice(0,80);
+  if(!res.length){ host.innerHTML='<p class="hint">Aucun paramètre pour ce filtre.</p>'; return; }
+  res.forEach(p=>{
+    const b=document.createElement("button"); b.className="pk";
+    b.innerHTML=`<span class="n"></span><span class="s"></span><span class="c"></span>`;
+    b.children[0].textContent=pName(p);
+    b.children[1].textContent=DB.sections[p.s];
+    b.children[2].textContent=pTag(p);
+    b.onclick=()=>{ const l=curLane(); l.key=pKey(p); close("#pickSheet"); openCurve(laneIdx); save(); };
+    host.appendChild(b);
+  });
+}
+
+/* ---------- réglages ---------- */
+$("#setBtn").onclick=()=>open("#setSheet");
+$("#outSel").onchange=bindPorts; $("#inSel").onchange=bindPorts;
+$("#clockSel").onchange=e=>{cfg.clock=e.target.value;clockPill();render();save();};
+$("#clockPill").onclick=()=>{cfg.clock=cfg.clock==="master"?"slave":"master";
+  $("#clockSel").value=cfg.clock;clockPill();render();save();};
+function clockPill(){ const p=$("#clockPill");
+  p.textContent=cfg.clock==="master"?"clock ▲ app":"clock ▼ tonverk";
+  p.classList.toggle("on",cfg.clock==="master"); p.classList.toggle("live",cfg.clock==="slave"); }
+stepper($("#pcChCtl"),()=>cfg.pcCh,v=>{cfg.pcCh=v;save();},1,16,1,v=>"ch "+v);
+var leadDraw=stepper($("#leadCtl"),()=>cfg.lead,v=>{cfg.lead=v;save();},0,1000,10,v=>v+" ms");
+$("#autoLeadBtn").onclick=()=>{
+  cfg.autoLead=!cfg.autoLead;
+  $("#autoLeadBtn").textContent=cfg.autoLead?"on":"off";
+  $("#autoLeadBtn").classList.toggle("on",cfg.autoLead);
+  save();
+};
+setInterval(()=>{ if($("#setSheet").classList.contains("open")) measUI(); },500);
+stepper($("#ccOffCtl"),()=>cfg.ccOff,v=>{cfg.ccOff=v;save();},-200,200,5,v=>v+" ms");
+stepper($("#ccResCtl"),()=>cfg.ccRes,v=>{cfg.ccRes=v;save();},1,24,1,v=>v+" ticks");
+(function(){ const g=$("#chGrid");
+  for(let i=0;i<NTRACKS;i++){ const b=document.createElement("button"); b.className="mbtn";
+    const d=()=>b.textContent=(i+1)+":"+cfg.trackCh[i];
+    b.onclick=()=>{cfg.trackCh[i]=cfg.trackCh[i]%16+1;d();save();}; d(); g.appendChild(b); } })();
+
+$("#csvBtn").onclick=()=>$("#csvIn").click();
+$("#csvIn").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{ DB=parseCSV(await f.text()); await store.set("sv:db",JSON.stringify(DB)); dbState(); }
+  catch(err){ $("#dbState").textContent="CSV illisible."; }
+};
+function parseCSV(txt){
+  const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+  const head=splitCSV(lines[0]);
+  const ix=n=>head.indexOf(n);
+  const iS=ix("section"),iN=ix("parameter_name"),iC=ix("cc_msb"),
+        iCmin=ix("cc_min_value"),iCmax=ix("cc_max_value"),
+        iM=ix("nrpn_msb"),iL=ix("nrpn_lsb"),iNmin=ix("nrpn_min_value"),iNmax=ix("nrpn_max_value");
+  if(iN<0) throw new Error("format");
+  const secs=[],params=[];
+  const num=v=>{const n=parseInt(v,10);return isNaN(n)?null:n;};
+  for(let i=1;i<lines.length;i++){
+    const c=splitCSV(lines[i]); if(c.length<head.length) continue;
+    const sec=c[iS]||"Divers"; if(!secs.includes(sec)) secs.push(sec);
+    const p={s:secs.indexOf(sec),n:c[iN]};
+    const cc=num(c[iC]), m=num(c[iM]), l=num(c[iL]);
+    if(cc!==null){ p.c=cc; p.mi=num(c[iCmin])??0; p.ma=num(c[iCmax])??127; }
+    else if(m!==null&&l!==null){ p.m=m; p.l=l; p.mi=num(c[iNmin])??0; p.ma=num(c[iNmax])??16383; }
+    else continue;
+    params.push(p);
+  }
+  return {sections:secs,params};
+}
+function splitCSV(line){
+  const out=[]; let cur="",q=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else if(ch==='"') q=true;
+    else if(ch===","){ out.push(cur); cur=""; }
+    else cur+=ch;
+  }
+  out.push(cur); return out;
+}
+$("#verTag").textContent="v"+VERSION;
+$("#updBtn").onclick=async()=>{
+  try{
+    if("serviceWorker" in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if(window.caches){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
+  }catch(e){}
+  location.reload(true);
+};
+$("#resetDb").onclick=async()=>{ await store.del("sv:db"); await loadDB(); flash("base intégrée"); };
+$("#wipeBtn").onclick=async()=>{
+  await store.del("sv:proj"); await store.del("sv:cfg");
+  location.reload();
+};
+
+/* ---------- songs ---------- */
+$("#brandBtn").onclick=$("#songPill").onclick=()=>{ renderSongs(); renderVers(); $("#songName").value=song().name; $("#endSel").value=song().end; open("#songsSheet"); };
+function renderSongs(){
+  const h=$("#songsList"); h.innerHTML="";
+  proj.songs.forEach((s,i)=>{
+    const d=document.createElement("div"); d.className="songrow"+(i===proj.cur?" cur":"");
+    const n=document.createElement("div"); n.className="n"; n.textContent=s.name;
+    const c=document.createElement("span"); c.className="tag"; c.textContent=s.rows.length+" rows";
+    d.append(n,c);
+    d.onclick=()=>{ if(eng.running) stop(); proj.cur=i; renderSongs(); renderVers(); render(); save();
+      $("#songName").value=s.name; $("#endSel").value=s.end; };
+    h.appendChild(d);
+  });
+}
+$("#newSong").onclick=()=>{ proj.songs.push(newSong("song "+(proj.songs.length+1)));
+  proj.cur=proj.songs.length-1; renderSongs(); render(); save(); $("#songName").value=song().name; };
+$("#dupSong").onclick=()=>{ const c=JSON.parse(JSON.stringify(song()));
+  c.id=Math.random().toString(36).slice(2,9); c.name=song().name+" copie";
+  proj.songs.push(c); proj.cur=proj.songs.length-1; renderSongs(); render(); save(); };
+$("#delSong").onclick=()=>{ if(proj.songs.length<2) return;
+  proj.songs.splice(proj.cur,1); proj.cur=0; renderSongs(); render(); save(); };
+$("#songName").oninput=e=>{ song().name=e.target.value; render(); renderSongs(); save(); };
+$("#endSel").onchange=e=>{ song().end=e.target.value; save(); };
+
+$("#expBtn").onclick=()=>{
+  const blob=new Blob([JSON.stringify(song(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=(song().name||"song").replace(/\s+/g,"-")+".json";
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+};
+$("#impBtn").onclick=()=>$("#impIn").click();
+$("#impIn").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const d=JSON.parse(await f.text());
+    snapshot("avant import");
+    if(d.songs){ proj=d; proj.cur=0; proj.songs.forEach(seal); }
+    else if(d.rows){ proj.songs.push(d); seal(d); proj.cur=proj.songs.length-1; }
+    else throw new Error("bad");
+    renderSongs(); render(); save(); close("#songsSheet");
+  }catch(err){ flash("json illisible"); }
+};
+
+/* ---------- transport ---------- */
+$("#playBtn").onclick=()=>eng.running?stop():play(0);
+$("#addBtn").onclick=()=>{ song().rows.push(newRow()); render(); save(); openRow(song().rows.length-1); };
+$("#nextBtn").onclick=()=>{
+  if(!eng.running) return;
+  const r=song().rows[eng.rowIdx];
+  if(r.jump.mode==="hold") eng.holdRelease=true;
+  else eng.queued=clamp(eng.rowIdx+1,0,song().rows.length-1);
+  paint();
+};
+
+/* ===================== synchro =====================
+   Deux dos possibles, même interface : list(), get(id), put(song).
+   La fusion se fait sur updatedAt, dernier écrit gagnant, et toute écrasure
+   locale passe d'abord par une version, donc rien ne disparaît sans trace. */
+let sync={ mode:"off", repo:"", branch:"main", tok:"" };
+
+const b64=str=>{
+  const b=new TextEncoder().encode(str); let out="";
+  for(let i=0;i<b.length;i+=0x8000) out+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));
+  return btoa(out);
+};
+const unb64=str=>new TextDecoder().decode(
+  Uint8Array.from(atob(str.replace(/\s/g,"")),c=>c.charCodeAt(0)));
+
+const CF={
+  /* Derrière Cloudflare Access, une session expirée répond une page de connexion en HTML
+     au lieu du JSON attendu. On le détecte pour dire quoi faire plutôt que de planter. */
+  async call(path,opt){
+    const r=await fetch(path,Object.assign({cache:"no-store",redirect:"follow"},opt));
+    const ct=r.headers.get("content-type")||"";
+    if(r.redirected||(!ct.includes("json")&&r.ok))
+      throw new Error("session expirée, rouvre l'app pour te reconnecter");
+    if(!r.ok) throw new Error("serveur "+r.status);
+    return r;
+  },
+  async list(){ return (await (await this.call("api/index")).json()).songs||[]; },
+  async get(id){ return (await this.call("api/song/"+id)).json(); },
+  async put(s){ await this.call("api/song/"+s.id,{method:"PUT",
+      headers:{"content-type":"application/json"},body:JSON.stringify(s)}); }
+};
+
+const GH={
+  head(){ return { Authorization:"Bearer "+sync.tok, Accept:"application/vnd.github+json" }; },
+  url(p){ return `https://api.github.com/repos/${sync.repo}/contents/${p}`; },
+  async list(){
+    const r=await fetch(this.url("songs")+"?ref="+(sync.branch||"main"),{headers:this.head(),cache:"no-store"});
+    if(r.status===404) return [];
+    if(!r.ok) throw new Error("github "+r.status);
+    const files=(await r.json()).filter(f=>f.name.endsWith(".json"));
+    const out=[];
+    for(const f of files){
+      const s=await this.getFile(f.path);
+      if(s&&s.song) out.push({id:s.song.id,name:s.song.name,updatedAt:s.song.updatedAt||0,sha:s.sha});
+    }
+    return out;
+  },
+  async getFile(path){
+    const r=await fetch(this.url(path)+"?ref="+(sync.branch||"main"),{headers:this.head(),cache:"no-store"});
+    if(!r.ok) return null;
+    const j=await r.json();
+    try{ return {song:JSON.parse(unb64(j.content)),sha:j.sha}; }catch(e){ return null; }
+  },
+  async get(id){ const f=await this.getFile("songs/"+id+".json"); if(!f) throw new Error("introuvable"); return f.song; },
+  async put(s){
+    const path="songs/"+s.id+".json";
+    const cur=await this.getFile(path);
+    const body={ message:`songverk: ${s.name}`, branch:sync.branch||"main",
+                 content:b64(JSON.stringify(s,null,2)) };
+    if(cur) body.sha=cur.sha;
+    const r=await fetch(this.url(path),{method:"PUT",headers:{...this.head(),"content-type":"application/json"},
+      body:JSON.stringify(body)});
+    if(!r.ok) throw new Error("github "+r.status);
+  }
+};
+const backend=()=>sync.mode==="cf"?CF:(sync.mode==="gh"?GH:null);
+
+/* updatedAt ne doit bouger que si le contenu a vraiment changé, sinon une simple
+   sauvegarde de réglage ferait gagner la copie locale à la prochaine fusion. */
+const sigOf=s=>s.name+"\u0000"+s.end+"\u0000"+JSON.stringify(s.rows);
+let sigs={};
+function touch(){
+  const s=song(); if(!s) return;
+  const sig=sigOf(s);
+  if(sigs[s.id]===undefined){ sigs[s.id]=sig; return; }   // première vue : on ne touche pas
+  if(sigs[s.id]!==sig){ sigs[s.id]=sig; s.updatedAt=Date.now(); }
+}
+function seal(s){ sigs[s.id]=sigOf(s); }                   // song venue d'ailleurs : on la prend telle quelle
+function syncState(msg,bad){
+  const el=$("#syncState"); if(el) el.innerHTML=msg;
+  const t=$("#syncTag");
+  if(t){ t.textContent=sync.mode==="off"?"appareil":(bad?"erreur":"prêt"); t.className="tag"+(bad?" nrpn":""); }
+}
+async function pushOne(s){ const b=backend(); if(!b) throw new Error("aucun mode"); await b.put(s); }
+
+async function doPush(){
+  try{ syncState("envoi…"); await pushOne(song());
+    syncState("« "+song().name+" » envoyée à "+fmtDate(Date.now()));
+  }catch(e){ syncState("envoi impossible : "+e.message,true); }
+}
+async function doPull(){
+  const b=backend(); if(!b) return;
+  try{
+    syncState("récupération…");
+    const remote=await b.get(song().id);
+    snapshot("avant récupération");
+    remote.id=song().id;
+    proj.songs[proj.cur]=remote; seal(remote);
+    render(); save(); renderSongs(); renderVers();
+    syncState("« "+remote.name+" » récupérée");
+  }catch(e){ syncState("récupération impossible : "+e.message,true); }
+}
+async function doSync(){
+  const b=backend(); if(!b) return;
+  try{
+    syncState("synchronisation…");
+    const remote=await b.list();
+    let up=0,down=0,add=0;
+    for(const r of remote){
+      const i=proj.songs.findIndex(s=>s.id===r.id);
+      if(i<0){ const got=await b.get(r.id); proj.songs.push(got); seal(got); add++; }
+      else if((r.updatedAt||0)>(proj.songs[i].updatedAt||0)){
+        const cur=proj.songs[i];
+        vers.unshift({id:Math.random().toString(36).slice(2,9),ts:Date.now(),
+          label:"avant synchro",songId:cur.id,name:cur.name,rows:cur.rows.length,data:JSON.stringify(cur)});
+        const got=await b.get(r.id); proj.songs[i]=got; seal(got); down++;
+      }
+    }
+    for(const s of proj.songs){
+      const r=remote.find(x=>x.id===s.id);
+      if(!r||(s.updatedAt||0)>(r.updatedAt||0)){ await b.put(s); up++; }
+    }
+    saveVers(); render(); save(); renderSongs(); renderVers();
+    syncState(`${up} envoyée${up>1?"s":""}, ${down} mise${down>1?"s":""} à jour, ${add} ajoutée${add>1?"s":""}.`);
+  }catch(e){ syncState("synchro impossible : "+e.message,true); }
+}
+
+$("#syncMode").onchange=e=>{
+  sync.mode=e.target.value;
+  $("#ghCfg").style.display=sync.mode==="gh"?"":"none";
+  saveSync(); syncState(sync.mode==="off"
+    ? "Les songs restent sur l'appareil."
+    : (sync.mode==="cf" ? "Stockage sur le serveur qui héberge l'app." : "Chaque envoi fait un commit dans le dépôt."));
+};
+["ghRepo","ghBranch","ghTok"].forEach(id=>{
+  $("#"+id).oninput=e=>{ sync[id==="ghRepo"?"repo":id==="ghBranch"?"branch":"tok"]=e.target.value.trim(); saveSync(); };
+});
+$("#pushBtn").onclick=doPush;
+$("#pullBtn").onclick=doPull;
+$("#syncBtn").onclick=doSync;
+async function saveSync(){ await store.set("sv:sync",JSON.stringify(sync)); }
+async function loadSync(){
+  try{ const v=await store.get("sv:sync"); if(v) sync=Object.assign(sync,JSON.parse(v)); }catch(e){}
+  $("#syncMode").value=sync.mode;
+  $("#ghRepo").value=sync.repo; $("#ghBranch").value=sync.branch; $("#ghTok").value=sync.tok;
+  $("#ghCfg").style.display=sync.mode==="gh"?"":"none";
+  syncState(sync.mode==="off"?"Les songs restent sur l'appareil.":"Mode actif : "+
+    (sync.mode==="cf"?"serveur de l'app":"dépôt GitHub"));
+}
+
+/* ---------- versions ---------- */
+let vers=[];
+const VER_MAX=40;
+async function loadVers(){
+  try{ const v=await store.get("sv:vers"); if(v) vers=JSON.parse(v)||[]; }catch(e){ vers=[]; }
+}
+async function saveVers(){
+  // on rogne par le nombre puis par le poids, pour ne pas saturer le stockage
+  while(vers.length>VER_MAX) vers.pop();
+  let payload=JSON.stringify(vers);
+  while(vers.length>1&&payload.length>2_000_000){ vers.pop(); payload=JSON.stringify(vers); }
+  await store.set("sv:vers",payload);
+}
+function snapshot(label){
+  const s=song();
+  vers.unshift({ id:Math.random().toString(36).slice(2,9), ts:Date.now(),
+                 label:(label||"").trim(), songId:s.id, name:s.name,
+                 rows:s.rows.length, data:JSON.stringify(s) });
+  saveVers(); renderVers();
+}
+function fmtDate(ts){
+  const d=new Date(ts), p=n=>String(n).padStart(2,"0");
+  return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function renderVers(){
+  const host=$("#verList"); if(!host) return;
+  const mine=vers.filter(v=>v.songId===song().id);
+  $("#verCount").textContent=mine.length?mine.length+" pour cette song":"aucune";
+  host.innerHTML="";
+  if(!mine.length){ host.innerHTML='<p class="hint">Aucune version enregistrée pour cette song.</p>'; return; }
+  mine.forEach(v=>{
+    const d=document.createElement("div"); d.className="songrow";
+    const n=document.createElement("div"); n.className="n";
+    const title=document.createElement("span");
+    title.textContent=v.label||"sans étiquette";
+    const meta=document.createElement("small"); meta.className="vmeta";
+    meta.textContent=`${fmtDate(v.ts)} · ${v.rows} rows`;
+    n.append(title,meta);
+    const rest=document.createElement("button"); rest.className="tool"; rest.textContent="restaurer";
+    rest.onclick=()=>{
+      if(eng.running) stop();
+      snapshot("avant restauration");
+      try{
+        const restored=JSON.parse(v.data);
+        restored.id=song().id;
+        proj.songs[proj.cur]=restored; restored.updatedAt=Date.now(); seal(restored);
+        render(); save(); renderSongs(); renderVers();
+        $("#songName").value=restored.name;
+        flash("version restaurée");
+      }catch(e){ flash("version illisible"); }
+    };
+    const del=document.createElement("button"); del.className="x"; del.textContent="✕";
+    del.onclick=()=>{ vers=vers.filter(x=>x.id!==v.id); saveVers(); renderVers(); };
+    d.append(n,rest,del); host.appendChild(d);
+  });
+}
+$("#snapBtn").onclick=()=>{ snapshot($("#verLabel").value); $("#verLabel").value=""; flash("version enregistrée"); };
+
+/* ---------- persistance ---------- */
+let saveT=null;
+function save(){ touch(); clearTimeout(saveT); saveT=setTimeout(async()=>{
+  await store.set("sv:proj",JSON.stringify(proj));
+  await store.set("sv:cfg",JSON.stringify(cfg));
+},250); }
+
+/* ---------- écran ---------- */
+let wake=null;
+async function keepAwake(){ try{ if("wakeLock" in navigator) wake=await navigator.wakeLock.request("screen"); }catch(e){} }
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") keepAwake(); });
+addEventListener("resize",()=>{ if(curveOpen){ sizeCanvas(); drawCurve(); }
+  document.querySelectorAll(".mini").forEach((c,i)=>{ const r=song().rows[editIdx]; if(r&&r.lanes[i]) miniDraw(c,r.lanes[i]); }); });
+
+/* ---------- boot ---------- */
+(async function boot(){
+  const p=await store.get("sv:proj"), c=await store.get("sv:cfg");
+  try{ if(p){ const d=JSON.parse(p); if(d.songs&&d.songs.length) proj=d; } }catch(e){}
+  try{ if(c) cfg=Object.assign(cfg,JSON.parse(c)); }catch(e){}
+  proj.cur=clamp(proj.cur|0,0,proj.songs.length-1);
+  $("#clockSel").value=cfg.clock;
+  $("#autoLeadBtn").textContent=cfg.autoLead?"on":"off";
+  $("#autoLeadBtn").classList.toggle("on",cfg.autoLead);
+  clockPill(); render(); uiTransport(); measUI();
+  await loadDB();
+  await loadVers(); renderVers();
+  await loadSync();
+  flash("songverk v"+VERSION);
+  if("serviceWorker" in navigator){
+    try{
+      const reg=await navigator.serviceWorker.register("sw.js");
+      // un nouveau worker qui prend la main = on recharge une seule fois, sans boucle
+      let reloaded=false;
+      navigator.serviceWorker.addEventListener("controllerchange",()=>{
+        if(reloaded) return; reloaded=true; location.reload();
+      });
+      reg.addEventListener("updatefound",()=>{
+        const w=reg.installing;
+        if(w) w.addEventListener("statechange",()=>{
+          if(w.state==="installed"&&navigator.serviceWorker.controller){
+            flash("mise à jour en cours");
+            w.postMessage("skip-waiting");
+          }
+        });
+      });
+      reg.update();
+      setInterval(()=>reg.update(),60000);
+    }catch(e){}
+  }
+  document.body.addEventListener("click",()=>{ initMidi(); keepAwake(); },{once:true});
+})();
+</script>
+</body>
+</html>
