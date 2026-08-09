@@ -159,6 +159,11 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .mbtn{height:40px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-family:var(--mono);font-size:12px;color:var(--dim)}
 .mbtn.on{background:#2a2a2f;border-color:#4a4a52;color:var(--ink)}
 .hint{font-size:11px;color:var(--dim);line-height:1.65;margin:8px 0 0}
+.mon{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#0e0e10;
+  padding:8px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.7;
+  max-height:150px;overflow-y:auto}
+.mon b{color:var(--hot);font-weight:600}
+.mon i{color:var(--ink);font-style:normal}
 .addbtn{width:100%;height:42px;border:1px dashed var(--line);border-radius:8px;color:var(--dim);
   font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
 .rowops{display:flex;gap:6px;margin-top:10px}
@@ -258,6 +263,11 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   <div class="field"><span class="lbl">Lead auto</span><div class="ctl">
     <button class="tool" id="autoLeadBtn">off</button></div></div>
   <p class="hint" id="measBox">Mesures en attente.</p>
+  <div class="rowops">
+    <button id="testPcBtn">envoyer un pc test</button>
+    <button id="scanBtn">trouver le canal pc</button>
+  </div>
+  <div class="mon" id="mon"></div>
   <div class="field"><span class="lbl">CC offset</span><div class="ctl" id="ccOffCtl"></div></div>
   <div class="field"><span class="lbl">Envoi CC</span><div class="ctl" id="ccResCtl"></div></div>
   <p class="hint">Le Tonverk applique un Program Change à la frontière de pattern suivante : le PC doit partir <b>avant</b> la fin de la row. 100 à 200 ms marchent en général. Si un changement arrive une pattern trop tard, augmente. Le canal PC doit correspondre à MIDI CONFIG → CHANNELS → PROGRAM CHANGE IN, avec PROGRAM CHANGE RECEIVE activé.</p>
@@ -403,7 +413,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
    SONGVERK · song mode externe pour Elektron Tonverk
    24 PPQN · 6 ticks / step (1/16)
    =================================================================== */
-const VERSION="0.7.0";   // à incrémenter en même temps que CACHE dans sw.js
+const VERSION="0.7.1";   // à incrémenter en même temps que CACHE dans sw.js
 const PPQN=24, TPS=6, NTRACKS=16, RES=64;   // RES = quantification horizontale des courbes
 const BANKS="ABCDEFGH";
 const $=s=>document.querySelector(s);
@@ -541,7 +551,27 @@ function bindPorts(){
   p.classList.toggle("err",!out);
   save();
 }
-const send=(b,t)=>{ if(out) out.send(b,t); };
+/* moniteur : les huit derniers événements, pour voir ce qui sort et ce qui entre */
+const mon=[];
+function log(dir,txt){
+  mon.unshift({dir,txt,t:performance.now()});
+  if(mon.length>8) mon.pop();
+  const el=$("#mon"); if(!el) return;
+  el.innerHTML=mon.length
+    ? mon.map(m=>`${m.dir==="out"?"<b>→</b>":"<i>←</i>"} ${m.txt}`).join("<br>")
+    : "rien pour l'instant";
+}
+const patName=p=>BANKS[Math.floor(p/16)]+String(p%16+1).padStart(2,"0");
+const send=(b,t)=>{
+  if(!out){ log("out","AUCUNE SORTIE : "+b.join(" ")); return; }
+  out.send(b,t);
+  const st=b[0]&0xF0, ch=(b[0]&0x0F)+1;
+  if(st===0xC0) log("out",`PC ch${ch} → ${patName(b[1])}`);
+  else if(st===0xB0&&b[1]===94) log("out",`CC94 ch${ch} → ${b[2]>63?"mute":"audible"}`);
+  else if(st===0xB0) log("out",`CC${b[1]} ch${ch} → ${b[2]}`);
+  else if(b[0]===0xFA) log("out","START");
+  else if(b[0]===0xFC) log("out","STOP");
+};
 function sendCC(ch,cc,v,t){ send([0xB0|(ch-1),cc&127,clamp(v,0,127)],t); }
 function sendNRPN(ch,msb,lsb,v,t){
   const s=0xB0|(ch-1), val=clamp(v,0,16383);
@@ -581,7 +611,7 @@ function eraseRange(l,x0,x1){
 /* mesures de timing, alimentées par ce que la machine renvoie */
 const meas={ jitter:0, roundTrip:null, lastErr:null, ok:0, late:0, echoes:0, pending:null };
 const eng={ running:false,rowIdx:0,pass:1,tickInRow:0,absTick:0,nextTickTime:0,
-  pcArmed:false,queued:null,holdRelease:false,lastMutes:null,lastVal:[],
+  pcArmed:false,armed:null,queued:null,holdRelease:false,lastMutes:null,lastVal:[],
   estTick:60000/(130*PPQN), lastInTick:0,
   /* le scheduler travaille jusqu'à 160 ms en avance : sans cette piste horodatée,
      le playhead affiche le futur. On rejoue les ticks à leur heure réelle. */
@@ -660,14 +690,17 @@ function tick(t,sendClock){
   const remain=total-eng.tickInRow;
   const dur=cfg.clock==="master"?60000/(r.bpm*PPQN):eng.estTick;
   if(!eng.pcArmed && remain*dur<=cfg.lead){
+    // nextRowIndex consomme la file d'attente : on retient la cible annoncée,
+    // sinon on envoie un PC vers une row et on en joue une autre
     const nx=nextRowIndex();
+    eng.armed=nx;
     if(nx>=0&&nx!==eng.rowIdx) sendPC(nx,t,t+remain*dur);
     eng.pcArmed=true;
   }
   eng.tickInRow++; eng.absTick++;
   if(eng.tickInRow>=total){
-    const nx=nextRowIndex();
-    eng.pcArmed=false; eng.holdRelease=false;
+    const nx=eng.pcArmed?eng.armed:nextRowIndex();
+    eng.pcArmed=false; eng.armed=null; eng.holdRelease=false;
     if(nx<0){ stop(); return; }
     eng.pass=(nx===eng.rowIdx)?eng.pass+1:1;
     eng.rowIdx=nx; eng.tickInRow=0;
@@ -683,18 +716,27 @@ function scheduler(){
     eng.nextTickTime+=dur;
   }
 }
+let clockSeen=0, clockCount=0;
 function onMidiIn(e){
   const s=e.data[0];
   if(s===0xF8){
+    clockSeen=e.timeStamp;
+    if(++clockCount%96===0) log("in",`clock ${(60000/(eng.estTick*PPQN)).toFixed(1)} bpm`);
     if(eng.lastInTick){ const d=e.timeStamp-eng.lastInTick; if(d>2&&d<200) eng.estTick=eng.estTick*.85+d*.15; }
     eng.lastInTick=e.timeStamp;
     if(eng.running&&cfg.clock==="slave"){ stamp(e.timeStamp,eng.estTick); tick(e.timeStamp,false); }
   } else if((s&0xF0)===0xC0){
+    log("in",`PC ch${(s&0x0F)+1} = ${patName(e.data[1])}`);
     onPcEcho(e.data[1],e.timeStamp);
-  } else if((s===0xFA||s===0xFB)&&cfg.clock==="slave"){
+  } else if(s===0xFA||s===0xFB){
+    log("in",s===0xFA?"START":"CONTINUE");
+    if(cfg.clock!=="slave") return;
     if(s===0xFA) resetPos(0);
     eng.running=true; uiTransport();
-  } else if(s===0xFC&&cfg.clock==="slave"){ eng.running=false; uiTransport(); }
+  } else if(s===0xFC){
+    log("in","STOP");
+    if(cfg.clock==="slave"){ eng.running=false; uiTransport(); }
+  }
 }
 /* La machine émet un Program Change au début de chaque nouveau pattern.
    Deux échos possibles :
@@ -738,7 +780,7 @@ function measUI(){
     (meas.echoes?`${meas.echoes} retours reçus`:`aucun retour : active PROGRAM CHANGE SEND sur la machine`);
 }
 function resetPos(i){ eng.rowIdx=i; eng.pass=1; eng.tickInRow=0; eng.absTick=0; eng.tl.length=0;
-  eng.pcArmed=false; eng.queued=null; eng.holdRelease=false; eng.lastMutes=null; }
+  eng.pcArmed=false; eng.armed=null; eng.queued=null; eng.holdRelease=false; eng.lastMutes=null; }
 function play(from){
   if(!out){ flash("choisis une sortie midi"); return; }
   resetPos(from||0);
@@ -1209,7 +1251,8 @@ $("#clockSel").onchange=e=>{cfg.clock=e.target.value;clockPill();render();save()
 $("#clockPill").onclick=()=>{cfg.clock=cfg.clock==="master"?"slave":"master";
   $("#clockSel").value=cfg.clock;clockPill();render();save();};
 function clockPill(){ const p=$("#clockPill");
-  p.textContent=cfg.clock==="master"?"clock ▲ app":"clock ▼ tonverk";
+  const live=cfg.clock==="slave"&&performance.now()-clockSeen<600;
+  p.textContent=cfg.clock==="master"?"clock ▲ app":("clock ▼ tonverk"+(live?" ●":" · rien"));
   p.classList.toggle("on",cfg.clock==="master"); p.classList.toggle("live",cfg.clock==="slave"); }
 stepper($("#pcChCtl"),()=>cfg.pcCh,v=>{cfg.pcCh=v;save();},1,16,1,v=>"ch "+v);
 var leadDraw=stepper($("#leadCtl"),()=>cfg.lead,v=>{cfg.lead=v;save();},0,1000,10,v=>v+" ms");
@@ -1220,6 +1263,27 @@ $("#autoLeadBtn").onclick=()=>{
   save();
 };
 setInterval(()=>{ if($("#setSheet").classList.contains("open")) measUI(); },500);
+
+$("#testPcBtn").onclick=()=>{
+  if(!out){ flash("aucune sortie midi"); return; }
+  sendPC(eng.running?eng.rowIdx:proj.songs[proj.cur].rows.length?0:0);
+  flash("pc envoyé");
+};
+/* Chaque canal reçoit un pattern différent : la machine n'en accepte qu'un,
+   le pattern sur lequel elle atterrit donne donc directement son canal. */
+$("#scanBtn").onclick=async()=>{
+  if(!out){ flash("aucune sortie midi"); return; }
+  if(eng.running) stop();
+  log("out","--- balayage des 16 canaux ---");
+  for(let ch=1;ch<=16;ch++){
+    send([0xC0|(ch-1),ch-1]);
+    await new Promise(r=>setTimeout(r,450));
+  }
+  $("#measBox").innerHTML="Balayage terminé. Regarde le pattern affiché sur la machine : "+
+    "<b>A01 veut dire canal 1, A05 canal 5</b>, et ainsi de suite. Reporte ce numéro dans « canal PC ». "+
+    "Si rien n'a bougé, c'est que PROGRAM CHANGE RECEIVE est coupé dans MIDI CONFIG, "+
+    "ou que le câble ne va pas du téléphone vers l'entrée de la machine.";
+};
 stepper($("#ccOffCtl"),()=>cfg.ccOff,v=>{cfg.ccOff=v;save();},-200,200,5,v=>v+" ms");
 stepper($("#ccResCtl"),()=>cfg.ccRes,v=>{cfg.ccRes=v;save();},1,24,1,v=>v+" ticks");
 (function(){ const g=$("#chGrid");
