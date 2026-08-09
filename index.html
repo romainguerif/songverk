@@ -11,8 +11,12 @@
 :root{
   /* noir profond, blanc franc, une seule couleur de signal : l'ambre ne dit qu'une chose, « c'est maintenant » */
   --bg:#0b0b0c; --panel:#141416; --panel2:#1b1b1e; --line:#26262a;
-  --ink:#f2f2f0; --dim:#8a8a92; --hot:#ff9436; --hot-dim:#3a2410;
-  --mute:#34343a; --ok:#4ade9b; --bad:#ff6b6b;
+  --ink:#f2f2f0; --dim:#8a8a92;
+  /* sérigraphie blanche sur alu noir : « maintenant » est le blanc pur,
+     la file d'attente se distingue par la forme (tirets, pulsation), pas par une teinte,
+     et le rouge ne sort que si quelque chose ne va pas */
+  --hot:#ffffff; --hot-dim:#3a3a3e;
+  --mute:#2e2e33; --ok:#ffffff; --bad:#ff5b52;
   --r:10px;
   /* mouvement : micro 120ms, standard 220ms, panneau 300ms, sortie plus courte que l'entrée */
   --t-fast:120ms; --t-base:220ms; --t-sheet:300ms; --t-exit:180ms;
@@ -49,7 +53,7 @@ header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto
   font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
 .st.on,.st.live{color:var(--ink);border-color:#33333a}
-.st.err{color:var(--bad);border-color:#3a2020}
+.st.err{color:var(--bad);border-color:#3a2222}
 .transport{display:flex;gap:8px;align-items:center}
 .play{flex:0 0 auto;width:58px;height:42px;border-radius:var(--r);background:var(--panel2);
   color:var(--ink);font-weight:600;font-size:11px;letter-spacing:.1em;position:relative;overflow:hidden;
@@ -57,7 +61,7 @@ header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto
 .play::after{content:"";position:absolute;left:9px;right:9px;bottom:6px;height:2px;border-radius:2px;
   background:var(--line);transition:background var(--t-base) var(--e-out)}
 .play.stop{box-shadow:inset 0 0 0 1px #3a3a40}
-.play.stop::after{background:var(--hot);box-shadow:0 0 8px rgba(255,148,54,.6)}
+.play.stop::after{background:var(--hot);box-shadow:0 0 8px rgba(255,255,255,.5)}
 .play span{display:block;transition:transform var(--t-fast) var(--e-out),opacity var(--t-fast) var(--e-out)}
 .play.swap span{transform:translateY(-6px);opacity:0}
 /* halo discret pendant la lecture, jamais clignotant */
@@ -73,18 +77,18 @@ main{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolli
   transition:border-color var(--t-base) var(--e-out),background-color var(--t-base) var(--e-out);
   animation:rowIn var(--t-base) var(--e-out) both}
 @keyframes rowIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.row.cur{border-color:var(--hot);background:#151310}
+.row.cur{border-color:var(--hot);background:#141416}
 .row:active{transform:scale(.995)}
-.row.queued{border-color:var(--ok)}
-.row.queued::after{content:"";position:absolute;inset:-1px;border:1px solid var(--ok);
+.row.queued{border-color:#5a5a62}
+.row.queued::after{content:"";position:absolute;inset:-1px;border:1px dashed var(--ink);
   border-radius:var(--r);animation:queue 1.6s ease-in-out infinite;pointer-events:none}
 @keyframes queue{0%,100%{opacity:.25}50%{opacity:1}}
 .fill{position:absolute;left:0;top:0;bottom:0;width:100%;
-  background:linear-gradient(90deg,rgba(255,148,54,.05),rgba(255,148,54,.12));
+  background:linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.085));
   transform:scaleX(0);transform-origin:left;will-change:transform;pointer-events:none}
 /* bord avant du playhead : la ligne fine qui donne la lecture précise */
 .head{position:absolute;top:0;bottom:0;width:2px;background:var(--hot);left:0;
-  opacity:0;will-change:transform;pointer-events:none;box-shadow:0 0 10px rgba(255,148,54,.5)}
+  opacity:0;will-change:transform;pointer-events:none;box-shadow:0 0 12px rgba(255,255,255,.45)}
 .row.cur .head{opacity:1}
 /* arête gauche pulsée sur le temps : on voit le tempo sans lire un chiffre */
 .edge{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot);
@@ -112,7 +116,7 @@ footer{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(180deg,
   padding:18px 10px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;z-index:5}
 .fbtn{flex:1;height:46px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);
   font-size:11px;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
-.fbtn.go{border-color:var(--ok);color:var(--ok)}
+.fbtn.go{border-color:#4a4a52;color:var(--ink)}
 .fbtn.danger{border-color:#4a2020;color:var(--bad)}
 
 .sheet{position:fixed;inset:0;background:rgba(6,6,7,0);display:none;z-index:20;
@@ -149,7 +153,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(36px,1fr));gap:5px;margin:8px 0 4px}
 .mgrid.wide{grid-template-columns:repeat(auto-fit,minmax(62px,1fr))}
 .mbtn{height:40px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-family:var(--mono);font-size:12px;color:var(--dim)}
-.mbtn.on{background:#1e3a30;border-color:#2f6a54;color:var(--ok)}
+.mbtn.on{background:#2a2a2f;border-color:#4a4a52;color:var(--ink)}
 .hint{font-size:11px;color:var(--dim);line-height:1.65;margin:8px 0 0}
 .addbtn{width:100%;height:42px;border:1px dashed var(--line);border-radius:8px;color:var(--dim);
   font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:4px}
@@ -164,7 +168,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .lane-name small{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tag{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:2px 5px}
-.tag.nrpn{color:var(--hot);border-color:var(--hot-dim)}
+.tag.nrpn{color:var(--ink);border-color:#3a3a3e}
 .mini{width:100%;height:44px;display:block}
 .dot{width:36px;height:36px;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
 .dot::before{content:"";width:11px;height:11px;border-radius:99px;background:var(--ok)}
@@ -183,20 +187,20 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .shapes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .shapes button{height:40px;border:1px solid var(--line);border-radius:8px;font-size:11px;color:var(--dim)}
 .readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
-.readout b{color:var(--hot);font-weight:600}
+.readout b{color:var(--ink);font-weight:600}
 
 /* picker */
 #pickList{max-height:56vh;overflow-y:auto;margin-top:8px}
 .pk{width:100%;text-align:left;padding:11px 10px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
 .pk .n{flex:1;font-size:13px}
 .pk .s{font-size:10px;color:var(--dim)}
-.pk .c{font-family:var(--mono);font-size:10px;color:var(--hot)}
+.pk .c{font-family:var(--mono);font-size:10px;color:var(--dim)}
 #pickSearch{max-width:none;width:100%}
 .songrow{display:flex;align-items:center;gap:10px;padding:12px 8px;border-bottom:1px solid var(--line)}
 .songrow .n{flex:1;min-width:0;font-size:14px}
 .songrow .vmeta{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;margin-top:2px}
 .songrow .tool{flex:0 0 auto}
-.songrow.cur .n{color:var(--hot)}
+.songrow.cur .n{color:var(--ink);font-weight:600}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition-duration:1ms!important;animation-duration:1ms!important;
     animation-iteration-count:1!important}
@@ -300,12 +304,12 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
     <button class="x" data-close>✕</button>
   </div>
   <p class="sheet-sub" id="curveSub"></p>
-  <div class="readout"><span id="roLeft">glisse sur la courbe pour dessiner</span><span id="roRight"></span></div>
+  <div class="readout"><span id="roLeft">glisse un point · double tape pour ajouter ou retirer</span><span id="roRight"></span></div>
   <div id="curveWrap"><canvas id="curve"></canvas></div>
   <div class="tools">
+    <button class="tool" data-tool="point">points</button>
     <button class="tool" data-tool="pen">crayon</button>
     <button class="tool" data-tool="line">ligne</button>
-    <button class="tool" data-tool="point">points</button>
     <button class="tool" id="snapBtn">snap</button>
     <button class="tool" id="interpBtn">lin</button>
   </div>
@@ -381,7 +385,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
    SONGVERK · song mode externe pour Elektron Tonverk
    24 PPQN · 6 ticks / step (1/16)
    =================================================================== */
-const VERSION="0.5.1";   // à incrémenter en même temps que CACHE dans sw.js
+const VERSION="0.6.0";   // à incrémenter en même temps que CACHE dans sw.js
 const PPQN=24, TPS=6, NTRACKS=16, RES=64;   // RES = quantification horizontale des courbes
 const BANKS="ABCDEFGH";
 const $=s=>document.querySelector(s);
@@ -910,13 +914,13 @@ function miniDraw(cv,l){
   cv.width=w*dpr; cv.height=h*dpr;
   const g=cv.getContext("2d"); g.scale(dpr,dpr);
   g.fillStyle="#131315"; g.fillRect(0,0,w,h);
-  g.strokeStyle="#ff9436"; g.lineWidth=1.5; g.beginPath();
+  g.strokeStyle="#c8ccd2"; g.lineWidth=1.5; g.beginPath();
   for(let i=0;i<=w;i+=2){ const y=h-4-curveAt(l,i/w)*(h-8); i?g.lineTo(i,y):g.moveTo(i,y); }
   g.stroke();
 }
 
 /* ---------- éditeur de courbe ---------- */
-let curveOpen=false, laneIdx=0, tool="pen", snap=false;
+let curveOpen=false, laneIdx=0, tool="point", snap=false;
 const cv=$("#curve"), gtx=cv.getContext("2d");
 function curLane(){ return song().rows[editIdx].lanes[laneIdx]; }
 
@@ -966,21 +970,26 @@ function drawCurve(playPhase){
   gtx.strokeStyle="#1a1a1e";
   for(let k=1;k<4;k++){ gtx.beginPath(); gtx.moveTo(pad,Y(k/4)); gtx.lineTo(w-pad,Y(k/4)); gtx.stroke(); }
   // courbe
-  gtx.strokeStyle="#ff9436"; gtx.lineWidth=2; gtx.beginPath();
+  gtx.strokeStyle="#e9edf3"; gtx.lineWidth=2; gtx.beginPath();
   for(let i=0;i<=w;i+=1){ const x=(i-pad)/(w-2*pad); const y=Y(curveAt(l,clamp(x,0,1)));
     i?gtx.lineTo(i,y):gtx.moveTo(i,y); }
   gtx.stroke();
-  gtx.fillStyle="rgba(255,148,54,.07)";
+  gtx.fillStyle="rgba(255,255,255,.06)";
   gtx.lineTo(w,h); gtx.lineTo(0,h); gtx.closePath(); gtx.fill();
-  // points
-  gtx.fillStyle="#ffd489";
-  l.pts.forEach(p=>{ gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),3,0,7); gtx.fill(); });
+  // points : plus gros et cerclés en mode édition, pour être attrapables au doigt
+  l.pts.forEach((p,i)=>{
+    const act=(i===dragPt);
+    gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),tool==="point"?(act?7:5):3,0,7);
+    gtx.fillStyle=act?"#ffffff":"#c8ccd2"; gtx.fill();
+    if(tool==="point"){ gtx.strokeStyle="rgba(255,255,255,.35)"; gtx.lineWidth=1;
+      gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),act?12:9,0,7); gtx.stroke(); }
+  });
   // playhead : ligne + pastille sur la valeur envoyée à cet instant
   if(playPhase!==undefined){
     const px=X(playPhase), py=Y(curveAt(l,playPhase));
-    gtx.strokeStyle="rgba(255,148,54,.5)"; gtx.lineWidth=1.5;
+    gtx.strokeStyle="rgba(255,255,255,.45)"; gtx.lineWidth=1.5;
     gtx.beginPath(); gtx.moveTo(px,pad); gtx.lineTo(px,h-pad); gtx.stroke();
-    gtx.fillStyle="#ff9436"; gtx.shadowColor="rgba(255,148,54,.85)"; gtx.shadowBlur=12;
+    gtx.fillStyle="#ffffff"; gtx.shadowColor="rgba(255,255,255,.8)"; gtx.shadowBlur=12;
     gtx.beginPath(); gtx.arc(px,py,4.5,0,7); gtx.fill(); gtx.shadowBlur=0;
     $("#roRight").innerHTML=`valeur <b>${laneValue(l,playPhase)}</b>`;
   }
@@ -993,23 +1002,64 @@ function evPos(e){
   return {x:clamp(x,0,1),y:clamp(y,0,1)};
 }
 let drawing=false, lastP=null, anchor=null;
+let dragPt=-1, lastTap=0, lastTapP=null, holdT=null, moved=false;
+const GRAB=26;                                    // rayon de saisie en pixels
+
+function nearestPoint(l,p){
+  const w=cv.clientWidth-12, h=cv.clientHeight-12;
+  let best=-1,bd=1e9;
+  l.pts.forEach((q,i)=>{
+    const d=Math.hypot((q.x-p.x)*w,(q.y-p.y)*h);
+    if(d<bd){ bd=d; best=i; }
+  });
+  return bd<=GRAB?best:-1;
+}
+function addPoint(l,p){
+  const q=Math.round(clamp(p.x,0,1)*RES)/RES;
+  const i=l.pts.findIndex(pt=>Math.abs(pt.x-q)<1e-9);
+  if(i>=0){ l.pts[i].y=p.y; return i; }
+  l.pts.push({x:q,y:p.y}); l.pts.sort((a,b)=>a.x-b.x);
+  return l.pts.findIndex(pt=>Math.abs(pt.x-q)<1e-9);
+}
+function removePoint(l,i){
+  if(i<0||l.pts.length<=2) return false;
+  l.pts.splice(i,1); return true;
+}
+
 cv.addEventListener("pointerdown",e=>{
   const l=curLane(); if(!l) return;
-  cv.setPointerCapture(e.pointerId); drawing=true;
-  const p=evPos(e);
+  cv.setPointerCapture(e.pointerId); drawing=true; moved=false;
+  const p=evPos(e), now=performance.now();
+
   if(tool==="pen"){ penPoint(l,p.x,p.y); lastP=p; }
   else if(tool==="line"){ anchor=p; }
-  else { // points : ajouter ou retirer
-    const near=l.pts.find(q=>Math.abs(q.x-p.x)<0.03);
-    if(near&&e.shiftKey) eraseRange(l,near.x,near.x); else penPoint(l,p.x,p.y);
+  else {
+    const near=nearestPoint(l,p);
+    const dbl = now-lastTap<340 && lastTapP &&
+                Math.hypot((p.x-lastTapP.x)*cv.clientWidth,(p.y-lastTapP.y)*cv.clientHeight)<28;
+    if(dbl){
+      // deuxième tape : sur un point existant on le retire, ailleurs on en ajoute un
+      if(near>=0&&near!==0&&near!==l.pts.length-1){ removePoint(l,near); dragPt=-1; }
+      else dragPt=addPoint(l,p);
+      lastTap=0; lastTapP=null;
+    } else {
+      dragPt=near;                                 // tape simple sur un point : on l'attrape
+      lastTap=now; lastTapP=p;
+      // appui long sur un point : suppression
+      if(near>=0) holdT=setTimeout(()=>{
+        if(!moved&&removePoint(l,near)){ dragPt=-1; drawCurve(); save(); flash("point supprimé"); }
+      },550);
+    }
   }
   updateReadout(p); drawCurve();
 });
+
 cv.addEventListener("pointermove",e=>{
   const l=curLane(); if(!l) return;
   const p=evPos(e);
   updateReadout(p);
   if(!drawing) return;
+  moved=true; if(holdT){ clearTimeout(holdT); holdT=null; }
   if(tool==="pen"){
     if(lastP){ const n=Math.max(1,Math.round(Math.abs(p.x-lastP.x)*RES));
       for(let k=1;k<=n;k++){ const t=k/n;
@@ -1019,10 +1069,23 @@ cv.addEventListener("pointermove",e=>{
   } else if(tool==="line"&&anchor){
     eraseRange(l,anchor.x,p.x);
     penPoint(l,anchor.x,anchor.y); penPoint(l,p.x,p.y);
-  } else if(tool==="point"){ penPoint(l,p.x,p.y); }
+  } else if(tool==="point"&&dragPt>=0){
+    const pt=l.pts[dragPt];
+    pt.y=clamp(p.y,0,1);
+    // les deux extrémités restent accrochées aux bords, le reste glisse sur la grille
+    if(dragPt>0&&dragPt<l.pts.length-1){
+      pt.x=clamp(Math.round(p.x*RES)/RES,1/RES,1-1/RES);
+      l.pts.sort((a,b)=>a.x-b.x);
+      dragPt=l.pts.indexOf(pt);
+    }
+  }
   drawCurve();
 });
-const endDraw=()=>{ if(drawing){ drawing=false; lastP=null; anchor=null; save(); } };
+
+const endDraw=()=>{
+  if(holdT){ clearTimeout(holdT); holdT=null; }
+  if(drawing){ drawing=false; lastP=null; anchor=null; dragPt=-1; save(); }
+};
 cv.addEventListener("pointerup",endDraw);
 cv.addEventListener("pointercancel",endDraw);
 
