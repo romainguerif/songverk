@@ -54,6 +54,10 @@ header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
 .st.on,.st.live{color:var(--ink);border-color:#33333a}
 .st.err{color:var(--bad);border-color:#3a2222}
+.st.rec{flex:0 0 auto;min-width:64px}
+.st.rec.armed{color:var(--bad);border-color:#3a2222}
+.st.rec.on{color:#0b0b0c;background:var(--bad);border-color:var(--bad);animation:recPulse 1.4s ease-in-out infinite}
+@keyframes recPulse{0%,100%{opacity:1}50%{opacity:.72}}
 .transport{display:flex;gap:8px;align-items:center}
 .play{flex:0 0 auto;width:58px;height:42px;border-radius:var(--r);background:var(--panel2);
   color:var(--ink);font-weight:600;font-size:11px;letter-spacing:.1em;position:relative;overflow:hidden;
@@ -269,6 +273,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
     <div class="now right"><span class="lbl">durée</span><span class="big val" id="nowTime">0:00</span></div>
   </div>
   <div class="bar status">
+    <button class="st rec" id="recPill">rec</button>
     <button class="st" id="clockPill">clock</button>
     <span class="st" id="bpmPill" style="flex:0 0 auto;min-width:76px">— bpm</span>
     <button class="st" id="midiPill">midi</button>
@@ -414,7 +419,10 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   <div class="sheet-h"><h2>Songs</h2><button class="x" data-close>✕</button></div>
   <div id="songsList"></div>
   <button class="addbtn" id="newSong">+ nouvelle song</button>
+  <button class="addbtn" id="skelBtn">partir d'un squelette</button>
+  <div id="skelList" style="display:none"></div>
   <div class="field" style="margin-top:12px"><span class="lbl">Nom</span><div class="ctl"><input type="text" id="songName"></div></div>
+  <div class="field"><span class="lbl">Durée cible</span><div class="ctl" id="targetCtl"></div></div>
   <div class="field"><span class="lbl">Fin de song</span><div class="ctl"><select id="endSel">
     <option value="loop">Boucler</option><option value="stop">Stop</option></select></div></div>
   <div class="rowops"><button id="dupSong">dupliquer</button><button id="impBtn">importer json</button>
@@ -429,6 +437,13 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   Les 40 dernières sont conservées. Une version est prise automatiquement avant tout import ou restauration.</p>
   <input type="file" id="impIn" accept=".json" hidden>
   <p class="hint">Export = un JSON par song, à plat et lisible, prêt à committer.</p>
+
+  <div class="sheet-h" style="margin-top:20px"><h2>Enregistrement</h2><span class="tag" id="recTag">—</span></div>
+  <div class="field"><span class="lbl">Entrée audio</span><div class="ctl"><select id="audioSel"></select></div></div>
+  <div class="field"><span class="lbl">Au play</span><div class="ctl">
+    <button class="tool" id="autoRecBtn">off</button></div></div>
+  <p class="hint" id="recState">Stéréo, WAV 32 bits flottant, non compressé. Les traitements de la voix
+  sont désactivés, sinon le navigateur écrase le signal.</p>
 
   <div class="sheet-h" style="margin-top:20px"><h2>Disque</h2><span class="tag" id="diskTag">—</span></div>
   <div class="rowops">
@@ -468,7 +483,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
    SONGVERK · song mode externe pour Elektron Tonverk
    24 PPQN · 6 ticks / step (1/16)
    =================================================================== */
-const VERSION="0.8.0";   // à incrémenter en même temps que CACHE dans sw.js
+const VERSION="0.9.0";   // à incrémenter en même temps que CACHE dans sw.js
 const PPQN=24, TPS=6, NTRACKS=16, RES=64;   // RES = quantification horizontale des courbes
 const BANKS="ABCDEFGH";
 const $=s=>document.querySelector(s);
@@ -532,10 +547,10 @@ function newRow(){
            jump:{mode:"none",target:0,n:2}, lanes:[] };
 }
 function newSong(name){ return { id:Math.random().toString(36).slice(2,9), name:name||"untitled",
-  end:"loop", updatedAt:Date.now(), rows:[newRow()] }; }
+  end:"loop", target:0, updatedAt:Date.now(), rows:[newRow()] }; }
 let proj={ songs:[newSong("song 1")], cur:0 };
 const song=()=>proj.songs[proj.cur];
-let cfg={ clock:"slave", pcCh:1, lead:150, ccOff:0, ccRes:3, autoLead:true, accent:"#ffb020",
+let cfg={ clock:"slave", pcCh:1, autoRec:false, audioId:null, lead:150, ccOff:0, ccRes:3, autoLead:true, accent:"#ffb020",
           trackCh:Array.from({length:NTRACKS},(_,i)=>i+1), outId:null, inId:null };
 
 /* ---------- couleur d'accent ---------- */
@@ -849,10 +864,12 @@ function play(from){
     timerId=setInterval(scheduler,TIMER);
     scheduler();
   } else { eng.running=true; flash("en attente du clock"); }
+  if(cfg.autoRec&&!recOn) recStartCapture();
   uiTransport();
 }
 function stop(){
   eng.running=false;
+  if(cfg.autoRec&&recOn) recStopCapture();
   if(timerId){clearInterval(timerId);timerId=null;}
   if(cfg.clock==="master") send([0xFC]);
   uiTransport();
@@ -937,7 +954,11 @@ function frame(){
     $("#nowBar").textContent=`${Math.floor(beat/4)+1}.${beat%4+1}`;
     // durée réelle depuis le play : ce qui compte quand on s'enregistre en live
     const el=(performance.now()-eng.t0)/1000;
-    $("#nowTime").textContent=Math.floor(el/60)+":"+String(Math.floor(el%60)).padStart(2,"0");
+    const tEl=$("#nowTime");
+    tEl.textContent=Math.floor(el/60)+":"+String(Math.floor(el%60)).padStart(2,"0");
+    // durée cible dépassée : le chrono vire au rouge, sans rien interrompre
+    const tgt=(song().target||0)*60;
+    tEl.style.color=tgt&&el>tgt?"var(--bad)":"";
     if(curveOpen) drawCurve(p.row===editIdx?p.phase:undefined);
   }
   requestAnimationFrame(frame);
@@ -1482,8 +1503,79 @@ $("#wipeBtn").onclick=async()=>{
   location.reload();
 };
 
+/* ---------- squelettes d'arrangement ----------
+   Chaque section vaut un nombre de barres. Une row = 16 steps répétés,
+   donc « intro 32 » devient une row de 16 steps répétée 32 fois. */
+const SKELETONS=[
+ {n:"Techno club", d:"Le format DJ classique, intro et outro longues pour mixer.",
+  s:[["intro",32],["montée",16],["main A",32],["break",16],["main B",32],["outro",32]]},
+ {n:"Techno longue", d:"Sections de 64, pour les sets étirés.",
+  s:[["intro",64],["A",64],["break",32],["B",64],["outro",64]]},
+ {n:"Hypnotique", d:"Pas de drop, tout se joue dans la dérive. Dozzy, Neel, Sabatini.",
+  s:[["intro nappe",32],["boucle A",64],["dérive",64],["boucle B",64],["retrait",32],["sortie",32]]},
+ {n:"Minimal deep tech", d:"Groove roulant, variations toutes les 16 ou 32 barres.",
+  s:[["intro",32],["groove",64],["variation",32],["groove +",64],["sortie",32]]},
+ {n:"Dub techno", d:"Nappe d'abord, accords qui se répondent dans le delay.",
+  s:[["nappe",32],["kick",32],["accords",64],["immersion",64],["retrait",32]]},
+ {n:"Une seule pattern", d:"Huit passages du même pattern, seuls les mutes changent. Le plus rapide.",
+  s:[["tout coupé",16],["kick",16],["+ basse",16],["+ hats",16],["plein",32],["break",16],["plein",32],["sortie",16]]},
+ {n:"Acid", d:"La 303 mène, le filtre monte.",
+  s:[["intro",16],["303 seule",16],["kick + 303",32],["filtre monte",16],["plein",32],["break",16],["final",32],["outro",16]]},
+ {n:"Electro", d:"Sections courtes, retours du thème, à la Drexciya.",
+  s:[["intro",16],["A",16],["B",16],["A'",16],["break",8],["C",16],["A",16],["outro",16]]},
+ {n:"Peak time", d:"Deux drops, tension et relâche marquées.",
+  s:[["intro",32],["montée",16],["drop",32],["break",24],["montée 2",16],["drop 2",32],["outro",32]]},
+ {n:"Ambient", d:"Quatre longues plages sans kick, pour les intros d'album.",
+  s:[["apparition",64],["nappe",64],["mouvement",64],["disparition",64]]},
+ {n:"Format court", d:"Quatre minutes, pour un EP ou une écoute maison.",
+  s:[["intro",8],["A",16],["B",16],["break",8],["C",16],["outro",8]]},
+ {n:"Irrégulier", d:"Longueurs impaires, pour casser la grille. IDM, broken.",
+  s:[["intro",12],["A",20],["cassure",12],["B",28],["dérive",20],["sortie",12]]},
+ {n:"Jam live", d:"Chaque section boucle jusqu'à ce que tu appuies sur NEXT.",
+  s:[["ouverture",16],["montée",16],["cœur",16],["variation",16],["descente",16]], hold:true}
+];
+function renderSkeletons(){
+  const h=$("#skelList"); h.innerHTML="";
+  SKELETONS.forEach((k,i)=>{
+    const bars=k.s.reduce((a,b)=>a+b[1],0);
+    const d=document.createElement("div"); d.className="songrow";
+    const n=document.createElement("div"); n.className="n";
+    const t=document.createElement("span"); t.textContent=k.n;
+    const m=document.createElement("small"); m.className="vmeta";
+    m.textContent=`${k.s.length} sections · ${bars} barres · ${(bars*4*60/132/60).toFixed(1)} min à 132`;
+    const dd=document.createElement("small"); dd.className="vmeta"; dd.textContent=k.d;
+    n.append(t,m,dd);
+    const b=document.createElement("button"); b.className="tool"; b.textContent="appliquer";
+    b.onclick=()=>applySkeleton(i);
+    d.append(n,b); h.appendChild(d);
+  });
+}
+function applySkeleton(i){
+  const k=SKELETONS[i];
+  if(eng.running) stop();
+  if(song().rows.length) snapshot("avant squelette");
+  song().rows=k.s.map(([label,bars],idx)=>{
+    const r=newRow();
+    r.label=label; r.len=16; r.rep=bars; r.slot=Math.min(idx,15);
+    if(k.hold) r.jump={mode:"hold",target:idx+1,n:2};
+    return r;
+  });
+  render(); save(); renderVers();
+  $("#skelList").style.display="none";
+  flash(k.n+" appliqué");
+}
+$("#skelBtn").onclick=()=>{
+  const h=$("#skelList");
+  const open_=h.style.display==="none";
+  if(open_) renderSkeletons();
+  h.style.display=open_?"":"none";
+  $("#skelBtn").textContent=open_?"masquer les squelettes":"partir d'un squelette";
+};
+
 /* ---------- songs ---------- */
-$("#brandBtn").onclick=$("#songPill").onclick=()=>{ renderSongs(); renderVers(); $("#songName").value=song().name; $("#endSel").value=song().end; open("#songsSheet"); };
+$("#brandBtn").onclick=$("#songPill").onclick=()=>{ renderSongs(); renderVers();
+  $("#skelList").style.display="none"; $("#skelBtn").textContent="partir d'un squelette"; $("#songName").value=song().name; $("#endSel").value=song().end;
+  targetDraw&&targetDraw(); open("#songsSheet"); };
 function renderSongs(){
   const h=$("#songsList"); h.innerHTML="";
   proj.songs.forEach((s,i)=>{
@@ -1505,6 +1597,8 @@ $("#delSong").onclick=()=>{ if(proj.songs.length<2) return;
   proj.songs.splice(proj.cur,1); proj.cur=0; renderSongs(); render(); save(); };
 $("#songName").oninput=e=>{ song().name=e.target.value; render(); renderSongs(); save(); };
 $("#endSel").onchange=e=>{ song().end=e.target.value; save(); };
+var targetDraw=stepper($("#targetCtl"),()=>song().target||0,v=>{ song().target=v; save(); },0,60,1,
+  v=>v?v+" min":"aucune");
 
 $("#expBtn").onclick=()=>{
   const blob=new Blob([JSON.stringify(song(),null,2)],{type:"application/json"});
@@ -1535,6 +1629,105 @@ $("#nextBtn").onclick=()=>{
   if(r.jump.mode==="hold") eng.holdRelease=true;
   else eng.queued=clamp(eng.rowIdx+1,0,song().rows.length-1);
   paint();
+};
+
+/* ===================== enregistrement audio =====================
+   Chrome plafonne l'entrée à deux canaux, donc stéréo au maximum, ici comme sur Mac.
+   On écrit du WAV flottant plutôt que de passer par MediaRecorder, qui compresse en Opus. */
+let recCtx=null, recNode=null, recStream=null, recChunks=[], recOn=false, recStart=0, recPeak=0;
+let audioDevs=[];
+
+async function listAudio(){
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    audioDevs=devs.filter(d=>d.kind==="audioinput");
+    const sel=$("#audioSel"); sel.innerHTML="";
+    sel.appendChild(new Option("— entrée par défaut —",""));
+    audioDevs.forEach(d=>sel.appendChild(new Option(d.label||"entrée sans nom",d.deviceId)));
+    if(cfg.audioId) sel.value=cfg.audioId;
+  }catch(e){}
+}
+async function recStartCapture(){
+  if(recOn) return;
+  try{
+    recStream=await navigator.mediaDevices.getUserMedia({audio:{
+      deviceId:cfg.audioId?{exact:cfg.audioId}:undefined,
+      channelCount:2, echoCancellation:false, noiseSuppression:false, autoGainControl:false
+    }});
+    await listAudio();                                   // les noms n'arrivent qu'après l'autorisation
+    recCtx=new AudioContext();
+    const src=recCtx.createMediaStreamSource(recStream);
+    const mod=`class R extends AudioWorkletProcessor{
+      process(inputs){ const i=inputs[0];
+        if(i&&i[0]){ const l=i[0], r=i[1]||i[0];
+          this.port.postMessage([new Float32Array(l),new Float32Array(r)]); }
+        return true; } }
+      registerProcessor('rec',R);`;
+    const url=URL.createObjectURL(new Blob([mod],{type:"text/javascript"}));
+    await recCtx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+    recNode=new AudioWorkletNode(recCtx,"rec",{numberOfInputs:1,numberOfOutputs:0});
+    recNode.port.onmessage=e=>{
+      recChunks.push(e.data);
+      const l=e.data[0];
+      for(let i=0;i<l.length;i+=32){ const a=Math.abs(l[i]); if(a>recPeak) recPeak=a; }
+    };
+    src.connect(recNode);
+    recChunks=[]; recOn=true; recStart=Date.now(); recUI();
+    log("in","enregistrement démarré");
+  }catch(e){ recUI("micro refusé ou entrée introuvable : "+e.message); }
+}
+async function recStopCapture(){
+  if(!recOn) return;
+  recOn=false;
+  try{ recNode.disconnect(); recStream.getTracks().forEach(t=>t.stop()); await recCtx.close(); }catch(e){}
+  const n=recChunks.reduce((a,c)=>a+c[0].length,0);
+  if(!n){ recUI("aucun signal capté"); return; }
+  const rate=recCtx?recCtx.sampleRate:48000;
+  const buf=new ArrayBuffer(44+n*8), v=new DataView(buf);
+  const str=(o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  str(0,"RIFF"); v.setUint32(4,36+n*8,true); str(8,"WAVEfmt ");
+  v.setUint32(16,16,true); v.setUint16(20,3,true);      // 3 = flottant
+  v.setUint16(22,2,true); v.setUint32(24,rate,true);
+  v.setUint32(28,rate*8,true); v.setUint16(32,8,true); v.setUint16(34,32,true);
+  str(36,"data"); v.setUint32(40,n*8,true);
+  let o=44;
+  for(const [l,r] of recChunks)
+    for(let i=0;i<l.length;i++){ v.setFloat32(o,l[i],true); v.setFloat32(o+4,r[i],true); o+=8; }
+  const d=new Date(), p=x=>String(x).padStart(2,"0");
+  const name=`${safeName(song().name)}-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.wav`;
+  const blob=new Blob([buf],{type:"audio/wav"});
+  if(dirHandle){
+    try{
+      const fh=await dirHandle.getFileHandle(name,{create:true});
+      const w=await fh.createWritable(); await w.write(blob); await w.close();
+      recUI(`${name} écrit dans ${dirHandle.name} · ${(n/rate).toFixed(1)} s`);
+    }catch(e){ recUI("écriture impossible : "+e.message); }
+  } else {
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+    recUI(`${name} téléchargé · ${(n/rate).toFixed(1)} s`);
+  }
+  recChunks=[]; recPeak=0;
+}
+function recUI(msg){
+  const p=$("#recPill"), t=$("#recTag"), st=$("#recState");
+  if(p){
+    p.classList.toggle("on",recOn);
+    p.classList.toggle("armed",!recOn&&!!cfg.autoRec);
+    p.textContent=recOn?("rec "+Math.floor((Date.now()-recStart)/1000)+"s"):"rec";
+  }
+  if(t){ t.textContent=recOn?"en cours":(cfg.autoRec?"armé":"arrêté"); }
+  if(st&&msg) st.textContent=msg;
+}
+setInterval(()=>{ if(recOn) recUI(); },1000);
+$("#recPill").onclick=()=>recOn?recStopCapture():recStartCapture();
+$("#audioSel").onchange=e=>{ cfg.audioId=e.target.value||null; save(); };
+$("#autoRecBtn").onclick=()=>{
+  cfg.autoRec=!cfg.autoRec;
+  $("#autoRecBtn").textContent=cfg.autoRec?"enregistre":"off";
+  $("#autoRecBtn").classList.toggle("on",cfg.autoRec);
+  save(); recUI();
 };
 
 /* ===================== disque =====================
@@ -1891,6 +2084,9 @@ addEventListener("resize",()=>{ if(curveOpen){ sizeCanvas(); drawCurve(); }
   // demande au navigateur de ne pas évincer le stockage sous pression
   try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
   await reconnectFolder(); diskUI();
+  $("#autoRecBtn").textContent=cfg.autoRec?"enregistre":"off";
+  $("#autoRecBtn").classList.toggle("on",cfg.autoRec);
+  recUI(); listAudio();
   flash("songverk v"+VERSION);
   if("serviceWorker" in navigator){
     try{
