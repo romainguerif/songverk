@@ -15,7 +15,7 @@
   /* sérigraphie blanche sur alu noir : « maintenant » est le blanc pur,
      la file d'attente se distingue par la forme (tirets, pulsation), pas par une teinte,
      et le rouge ne sort que si quelque chose ne va pas */
-  --hot:#ffffff; --hot-dim:#3a3a3e;
+  --hot:#ffb020; --hot-dim:#3a3a3e;   /* remplacée à chaud par la couleur choisie */
   --mute:#2e2e33; --ok:#ffffff; --bad:#ff5b52;
   --r:10px;
   /* mouvement : micro 120ms, standard 220ms, panneau 300ms, sortie plus courte que l'entrée */
@@ -41,7 +41,7 @@ header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto
 .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;min-width:0}
 .bar+.bar{border-top:1px solid var(--line)}
 .brand{font-size:11px;letter-spacing:.18em;font-weight:600;flex:0 0 auto;min-height:36px;padding-right:2px}
-.brand b{color:var(--dim);font-weight:400}
+.brand b{color:var(--hot);font-weight:600}
 .spacer{flex:1}
 .songname{flex:1;min-width:0;text-align:left;font-size:13px;color:var(--dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:36px}
@@ -61,7 +61,7 @@ header{border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto
 .play::after{content:"";position:absolute;left:9px;right:9px;bottom:6px;height:2px;border-radius:2px;
   background:var(--line);transition:background var(--t-base) var(--e-out)}
 .play.stop{box-shadow:inset 0 0 0 1px #3a3a40}
-.play.stop::after{background:var(--hot);box-shadow:0 0 8px rgba(255,255,255,.5)}
+.play.stop::after{background:var(--hot);box-shadow:0 0 8px var(--glow)}
 .play span{display:block;transition:transform var(--t-fast) var(--e-out),opacity var(--t-fast) var(--e-out)}
 .play.swap span{transform:translateY(-6px);opacity:0}
 /* halo discret pendant la lecture, jamais clignotant */
@@ -80,15 +80,15 @@ main{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolli
 .row.cur{border-color:var(--hot);background:#141416}
 .row:active{transform:scale(.995)}
 .row.queued{border-color:#5a5a62}
-.row.queued::after{content:"";position:absolute;inset:-1px;border:1px dashed var(--ink);
+.row.queued::after{content:"";position:absolute;inset:-1px;border:1px dashed var(--hot);
   border-radius:var(--r);animation:queue 1.6s ease-in-out infinite;pointer-events:none}
 @keyframes queue{0%,100%{opacity:.25}50%{opacity:1}}
 .fill{position:absolute;left:0;top:0;bottom:0;width:100%;
-  background:linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.085));
+  background:linear-gradient(90deg,var(--fill-a),var(--fill-b));
   transform:scaleX(0);transform-origin:left;will-change:transform;pointer-events:none}
 /* bord avant du playhead : la ligne fine qui donne la lecture précise */
 .head{position:absolute;top:0;bottom:0;width:2px;background:var(--hot);left:0;
-  opacity:0;will-change:transform;pointer-events:none;box-shadow:0 0 12px rgba(255,255,255,.45)}
+  opacity:0;will-change:transform;pointer-events:none;box-shadow:0 0 12px var(--glow)}
 .row.cur .head{opacity:1}
 /* arête gauche pulsée sur le temps : on voit le tempo sans lire un chiffre */
 .edge{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot);
@@ -104,7 +104,7 @@ main{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolli
   font-family:var(--mono);font-size:10px;color:var(--dim)}
 .chips i{font-style:normal}
 .chips i.hot{color:var(--hot)}
-.chips i.ok{color:var(--ok)}
+.chips i.ok{color:var(--hot)}
 /* mutes en deux rangées de 8 : 46px au lieu de 112 */
 .mutedots{display:grid;grid-template-columns:repeat(8,4px);gap:2px;flex:0 0 auto}
 .md{width:4px;height:6px;border-radius:1px;background:var(--ok);opacity:.9}
@@ -152,6 +152,10 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   border-radius:8px;padding:9px 10px;font:inherit;font-size:14px;width:100%;min-width:0;max-width:100%}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(36px,1fr));gap:5px;margin:8px 0 4px}
 .mgrid.wide{grid-template-columns:repeat(auto-fit,minmax(62px,1fr))}
+.swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:8px;margin:8px 0 4px}
+.sw{height:44px;border-radius:9px;border:1px solid var(--line);position:relative;overflow:hidden}
+.sw i{position:absolute;inset:6px;border-radius:5px;display:block}
+.sw.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .mbtn{height:40px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-family:var(--mono);font-size:12px;color:var(--dim)}
 .mbtn.on{background:#2a2a2f;border-color:#4a4a52;color:var(--ink)}
 .hint{font-size:11px;color:var(--dim);line-height:1.65;margin:8px 0 0}
@@ -187,7 +191,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .shapes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .shapes button{height:40px;border:1px solid var(--line);border-radius:8px;font-size:11px;color:var(--dim)}
 .readout{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
-.readout b{color:var(--ink);font-weight:600}
+.readout b{color:var(--hot);font-weight:600}
 
 /* picker */
 #pickList{max-height:56vh;overflow-y:auto;margin-top:8px}
@@ -200,7 +204,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
 .songrow .n{flex:1;min-width:0;font-size:14px}
 .songrow .vmeta{display:block;color:var(--dim);font-family:var(--mono);font-size:10px;margin-top:2px}
 .songrow .tool{flex:0 0 auto}
-.songrow.cur .n{color:var(--ink);font-weight:600}
+.songrow.cur .n{color:var(--hot);font-weight:600}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition-duration:1ms!important;animation-duration:1ms!important;
     animation-iteration-count:1!important}
@@ -242,6 +246,11 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   <div class="sheet-h"><h2>Réglages</h2><span class="tag" id="verTag"></span><button class="x" data-close>✕</button></div>
   <div class="field"><span class="lbl">Sortie MIDI</span><div class="ctl"><select id="outSel"></select></div></div>
   <div class="field"><span class="lbl">Entrée MIDI</span><div class="ctl"><select id="inSel"></select></div></div>
+  <div class="sheet-h" style="margin-top:4px"><h2>Couleur</h2><span class="tag" id="accName"></span></div>
+  <div class="swatches" id="swatches"></div>
+  <p class="hint">La couleur ne sert qu'à dire « c'est maintenant ». Tout le reste reste gris.</p>
+
+  <div class="sheet-h" style="margin-top:20px"><h2>MIDI</h2></div>
   <div class="field"><span class="lbl">Horloge</span><div class="ctl"><select id="clockSel">
     <option value="master">App master</option><option value="slave">Tonverk master</option></select></div></div>
   <div class="field"><span class="lbl">Canal PC</span><div class="ctl" id="pcChCtl"></div></div>
@@ -356,6 +365,15 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
   <input type="file" id="impIn" accept=".json" hidden>
   <p class="hint">Export = un JSON par song, à plat et lisible, prêt à committer.</p>
 
+  <div class="sheet-h" style="margin-top:20px"><h2>Disque</h2><span class="tag" id="diskTag">—</span></div>
+  <div class="rowops">
+    <button id="folderBtn">choisir un dossier</button>
+    <button id="fullBtn">sauvegarde complète</button>
+    <button id="restoreBtn">restaurer</button>
+  </div>
+  <input type="file" id="fullIn" accept=".json" hidden>
+  <p class="hint" id="diskState"></p>
+
   <div class="sheet-h" style="margin-top:20px"><h2>Synchro</h2><span class="tag" id="syncTag">hors ligne</span></div>
   <div class="field"><span class="lbl">Mode</span><div class="ctl"><select id="syncMode">
     <option value="off">Appareil seulement</option>
@@ -385,7 +403,7 @@ select,input[type=text],input[type=search]{background:var(--panel2);border:1px s
    SONGVERK · song mode externe pour Elektron Tonverk
    24 PPQN · 6 ticks / step (1/16)
    =================================================================== */
-const VERSION="0.6.0";   // à incrémenter en même temps que CACHE dans sw.js
+const VERSION="0.7.0";   // à incrémenter en même temps que CACHE dans sw.js
 const PPQN=24, TPS=6, NTRACKS=16, RES=64;   // RES = quantification horizontale des courbes
 const BANKS="ABCDEFGH";
 const $=s=>document.querySelector(s);
@@ -452,8 +470,45 @@ function newSong(name){ return { id:Math.random().toString(36).slice(2,9), name:
   end:"loop", updatedAt:Date.now(), rows:[newRow()] }; }
 let proj={ songs:[newSong("song 1")], cur:0 };
 const song=()=>proj.songs[proj.cur];
-let cfg={ clock:"master", pcCh:1, lead:150, ccOff:0, ccRes:3, autoLead:true,
+let cfg={ clock:"master", pcCh:1, lead:150, ccOff:0, ccRes:3, autoLead:true, accent:"#ffb020",
           trackCh:Array.from({length:NTRACKS},(_,i)=>i+1), outId:null, inId:null };
+
+/* ---------- couleur d'accent ---------- */
+const ACCENTS=[
+  {n:"ambre",  c:"#ffb020"},
+  {n:"orange", c:"#ff7a2f"},
+  {n:"blanc",  c:"#ffffff"},
+  {n:"rouge",  c:"#ff4a3d"},
+  {n:"vert",   c:"#4ade9b"},
+  {n:"cyan",   c:"#3fd0e0"},
+  {n:"bleu",   c:"#5b9cff"},
+  {n:"violet", c:"#b08cff"}
+];
+let ACC="#ffb020";
+const hex2rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+function applyAccent(hex){
+  ACC=hex; const [r,g,b]=hex2rgb(hex);
+  const root=document.documentElement.style;
+  root.setProperty("--hot",hex);
+  root.setProperty("--hot-dim",`rgba(${r},${g},${b},.28)`);
+  root.setProperty("--fill-a",`rgba(${r},${g},${b},.05)`);
+  root.setProperty("--fill-b",`rgba(${r},${g},${b},.13)`);
+  root.setProperty("--glow",`rgba(${r},${g},${b},.5)`);
+  const t=document.querySelector('meta[name=theme-color]'); if(t) t.setAttribute("content","#0b0b0c");
+  const nm=$("#accName"); if(nm){ const a=ACCENTS.find(x=>x.c===hex); nm.textContent=a?a.n:hex; }
+  document.querySelectorAll(".sw").forEach(b=>b.classList.toggle("on",b.dataset.c===hex));
+  if(curveOpen) drawCurve();
+}
+(function(){
+  const g=$("#swatches");
+  ACCENTS.forEach(a=>{
+    const b=document.createElement("button");
+    b.className="sw"; b.dataset.c=a.c; b.title=a.n;
+    const i=document.createElement("i"); i.style.background=a.c; b.appendChild(i);
+    b.onclick=()=>{ cfg.accent=a.c; applyAccent(a.c); save(); render(); };
+    g.appendChild(b);
+  });
+})();
 
 /* ---------- MIDI ---------- */
 let midi=null,out=null,inp=null;
@@ -914,7 +969,7 @@ function miniDraw(cv,l){
   cv.width=w*dpr; cv.height=h*dpr;
   const g=cv.getContext("2d"); g.scale(dpr,dpr);
   g.fillStyle="#131315"; g.fillRect(0,0,w,h);
-  g.strokeStyle="#c8ccd2"; g.lineWidth=1.5; g.beginPath();
+  g.strokeStyle=ACC; g.lineWidth=1.5; g.beginPath();
   for(let i=0;i<=w;i+=2){ const y=h-4-curveAt(l,i/w)*(h-8); i?g.lineTo(i,y):g.moveTo(i,y); }
   g.stroke();
 }
@@ -970,26 +1025,26 @@ function drawCurve(playPhase){
   gtx.strokeStyle="#1a1a1e";
   for(let k=1;k<4;k++){ gtx.beginPath(); gtx.moveTo(pad,Y(k/4)); gtx.lineTo(w-pad,Y(k/4)); gtx.stroke(); }
   // courbe
-  gtx.strokeStyle="#e9edf3"; gtx.lineWidth=2; gtx.beginPath();
+  gtx.strokeStyle=ACC; gtx.lineWidth=2; gtx.beginPath();
   for(let i=0;i<=w;i+=1){ const x=(i-pad)/(w-2*pad); const y=Y(curveAt(l,clamp(x,0,1)));
     i?gtx.lineTo(i,y):gtx.moveTo(i,y); }
   gtx.stroke();
-  gtx.fillStyle="rgba(255,255,255,.06)";
+  gtx.fillStyle=ACC+"14";
   gtx.lineTo(w,h); gtx.lineTo(0,h); gtx.closePath(); gtx.fill();
   // points : plus gros et cerclés en mode édition, pour être attrapables au doigt
   l.pts.forEach((p,i)=>{
     const act=(i===dragPt);
     gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),tool==="point"?(act?7:5):3,0,7);
-    gtx.fillStyle=act?"#ffffff":"#c8ccd2"; gtx.fill();
+    gtx.fillStyle=act?ACC:"#c8ccd2"; gtx.fill();
     if(tool==="point"){ gtx.strokeStyle="rgba(255,255,255,.35)"; gtx.lineWidth=1;
       gtx.beginPath(); gtx.arc(X(p.x),Y(p.y),act?12:9,0,7); gtx.stroke(); }
   });
   // playhead : ligne + pastille sur la valeur envoyée à cet instant
   if(playPhase!==undefined){
     const px=X(playPhase), py=Y(curveAt(l,playPhase));
-    gtx.strokeStyle="rgba(255,255,255,.45)"; gtx.lineWidth=1.5;
+    gtx.strokeStyle=ACC+"88"; gtx.lineWidth=1.5;
     gtx.beginPath(); gtx.moveTo(px,pad); gtx.lineTo(px,h-pad); gtx.stroke();
-    gtx.fillStyle="#ffffff"; gtx.shadowColor="rgba(255,255,255,.8)"; gtx.shadowBlur=12;
+    gtx.fillStyle=ACC; gtx.shadowColor=ACC; gtx.shadowBlur=12;
     gtx.beginPath(); gtx.arc(px,py,4.5,0,7); gtx.fill(); gtx.shadowBlur=0;
     $("#roRight").innerHTML=`valeur <b>${laneValue(l,playPhase)}</b>`;
   }
@@ -1283,6 +1338,120 @@ $("#nextBtn").onclick=()=>{
   paint();
 };
 
+/* ===================== disque =====================
+   Sur ordinateur, l'app écrit directement dans un dossier choisi une fois pour toutes :
+   les songs vivent alors sur le disque, pas seulement dans le navigateur.
+   Sur Android l'API n'existe pas, on retombe sur une sauvegarde complète téléchargée. */
+const hasFS = typeof window.showDirectoryPicker === "function";
+let dirHandle=null, diskT=null, lastDisk=null;
+
+const idb={
+  db:null,
+  open(){ return this.db ? Promise.resolve(this.db) : new Promise((res,rej)=>{
+    const r=indexedDB.open("songverk",1);
+    r.onupgradeneeded=()=>r.result.createObjectStore("kv");
+    r.onsuccess=()=>{ this.db=r.result; res(this.db); };
+    r.onerror=()=>rej(r.error);
+  }); },
+  async get(k){ const db=await this.open(); return new Promise((res,rej)=>{
+    const t=db.transaction("kv").objectStore("kv").get(k);
+    t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error); }); },
+  async set(k,v){ const db=await this.open(); return new Promise((res,rej)=>{
+    const t=db.transaction("kv","readwrite").objectStore("kv").put(v,k);
+    t.onsuccess=()=>res(); t.onerror=()=>rej(t.error); }); }
+};
+
+const safeName=s=>(s||"song").replace(/[^\w\-]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"song";
+function fullBackup(){
+  return { app:"songverk", version:VERSION, ts:Date.now(),
+           songs:proj.songs, cur:proj.cur, versions:vers,
+           cfg:Object.assign({},cfg),
+           sync:{mode:sync.mode,repo:sync.repo,branch:sync.branch} };  // jamais le jeton
+}
+async function writeFile(name,text){
+  const fh=await dirHandle.getFileHandle(name,{create:true});
+  const w=await fh.createWritable();
+  await w.write(text); await w.close();
+}
+async function diskWrite(){
+  if(!dirHandle) return;
+  try{
+    for(const s of proj.songs) await writeFile(safeName(s.name)+"-"+s.id+".json",JSON.stringify(s,null,2));
+    await writeFile("songverk-backup.json",JSON.stringify(fullBackup(),null,2));
+    lastDisk=Date.now(); await store.set("sv:lastBackup",String(lastDisk));
+    diskUI();
+  }catch(e){ diskUI("écriture impossible : "+e.message); }
+}
+function diskSoon(){ if(!dirHandle) return; clearTimeout(diskT); diskT=setTimeout(diskWrite,1500); }
+
+async function pickFolder(){
+  try{
+    dirHandle=await showDirectoryPicker({id:"songverk",mode:"readwrite",startIn:"documents"});
+    await idb.set("dir",dirHandle);
+    await diskWrite();
+    flash("dossier relié");
+  }catch(e){ if(e.name!=="AbortError") diskUI("dossier refusé : "+e.message); }
+}
+async function reconnectFolder(){
+  if(!hasFS) return;
+  try{
+    const h=await idb.get("dir"); if(!h) return;
+    const p=await h.queryPermission({mode:"readwrite"});
+    if(p==="granted"){ dirHandle=h; await diskWrite(); }
+    else { dirHandle=null; diskUI("autorisation à redonner"); }
+  }catch(e){}
+}
+function diskUI(err){
+  const tag=$("#diskTag"), st=$("#diskState");
+  if(!tag) return;
+  const days=lastDisk?Math.floor((Date.now()-lastDisk)/86400000):null;
+  if(err){ tag.textContent="erreur"; tag.className="tag nrpn"; st.textContent=err; return; }
+  if(!hasFS){
+    tag.textContent="indisponible"; tag.className="tag";
+    st.innerHTML="Ce navigateur ne peut pas écrire sur le disque, c'est le cas de Chrome sur Android. "+
+      "Utilise <b>sauvegarde complète</b> : un seul fichier json avec toutes les songs, les versions et les réglages, "+
+      "déposé dans tes téléchargements."+
+      (lastDisk?`<br>Dernière sauvegarde le ${fmtDate(lastDisk)}.`:"<br><b>Aucune sauvegarde à ce jour.</b>");
+    if(days!==null&&days>=7) st.innerHTML+=" <b style=\"color:var(--bad)\">Plus de "+days+" jours.</b>";
+    return;
+  }
+  if(dirHandle){
+    tag.textContent="relié"; tag.className="tag nrpn";
+    st.innerHTML=`Chaque modification est écrite dans <b>${dirHandle.name}</b>, une song par fichier plus un backup complet.`+
+      (lastDisk?`<br>Dernier écrit à ${fmtDate(lastDisk)}.`:"");
+  } else {
+    tag.textContent="non relié"; tag.className="tag";
+    st.innerHTML="Choisis un dossier : l'app y écrira toutes tes songs à chaque modification. "+
+      "Sans ça, tout ne vit que dans le navigateur."+
+      (lastDisk?`<br>Dernière sauvegarde le ${fmtDate(lastDisk)}.`:"");
+  }
+}
+$("#folderBtn").onclick=()=>hasFS?pickFolder():$("#fullBtn").click();
+$("#fullBtn").onclick=async()=>{
+  const blob=new Blob([JSON.stringify(fullBackup(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  const d=new Date(), p=n=>String(n).padStart(2,"0");
+  a.href=URL.createObjectURL(blob);
+  a.download=`songverk-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  lastDisk=Date.now(); await store.set("sv:lastBackup",String(lastDisk)); diskUI();
+};
+$("#restoreBtn").onclick=()=>$("#fullIn").click();
+$("#fullIn").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const d=JSON.parse(await f.text());
+    if(!d.songs) throw new Error("ce fichier n'est pas une sauvegarde songverk");
+    if(proj.songs.length) snapshot("avant restauration complète");
+    proj={songs:d.songs,cur:0};
+    proj.songs.forEach(seal);
+    if(Array.isArray(d.versions)) { vers=d.versions; saveVers(); }
+    if(d.cfg){ const tok=sync.tok; cfg=Object.assign(cfg,d.cfg); applyAccent(cfg.accent||"#ffb020"); sync.tok=tok; }
+    render(); save(); renderSongs(); renderVers(); diskUI();
+    flash(proj.songs.length+" songs restaurées");
+  }catch(err){ diskUI("restauration impossible : "+err.message); }
+};
+
 /* ===================== synchro =====================
    Deux dos possibles, même interface : list(), get(id), put(song).
    La fusion se fait sur updatedAt, dernier écrit gagnant, et toute écrasure
@@ -1495,6 +1664,7 @@ let saveT=null;
 function save(){ touch(); clearTimeout(saveT); saveT=setTimeout(async()=>{
   await store.set("sv:proj",JSON.stringify(proj));
   await store.set("sv:cfg",JSON.stringify(cfg));
+  diskSoon();
 },250); }
 
 /* ---------- écran ---------- */
@@ -1510,6 +1680,7 @@ addEventListener("resize",()=>{ if(curveOpen){ sizeCanvas(); drawCurve(); }
   try{ if(p){ const d=JSON.parse(p); if(d.songs&&d.songs.length) proj=d; } }catch(e){}
   try{ if(c) cfg=Object.assign(cfg,JSON.parse(c)); }catch(e){}
   proj.cur=clamp(proj.cur|0,0,proj.songs.length-1);
+  applyAccent(cfg.accent||"#ffb020");
   $("#clockSel").value=cfg.clock;
   $("#autoLeadBtn").textContent=cfg.autoLead?"on":"off";
   $("#autoLeadBtn").classList.toggle("on",cfg.autoLead);
@@ -1517,6 +1688,10 @@ addEventListener("resize",()=>{ if(curveOpen){ sizeCanvas(); drawCurve(); }
   await loadDB();
   await loadVers(); renderVers();
   await loadSync();
+  try{ lastDisk=+(await store.get("sv:lastBackup"))||null; }catch(e){}
+  // demande au navigateur de ne pas évincer le stockage sous pression
+  try{ if(navigator.storage&&navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+  await reconnectFolder(); diskUI();
   flash("songverk v"+VERSION);
   if("serviceWorker" in navigator){
     try{

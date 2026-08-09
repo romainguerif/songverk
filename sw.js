@@ -1,7 +1,7 @@
 /* SONGVERK — cache offline.
    Le HTML passe en réseau d'abord : un rafraîchissement avec du réseau donne toujours la dernière version,
    et le cache ne sert que de filet hors ligne. Le reste garde le cache d'abord, c'est immuable ou presque. */
-const CACHE = "songverk-v0.6.0";
+const CACHE = "songverk-v0.7.0";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", e => {
